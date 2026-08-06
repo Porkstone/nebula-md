@@ -18,7 +18,7 @@ Features include source, split, and preview layouts; tables, task lists, footnot
     <docsUrl>https://github.com/Porkstone/nebula-md/blob/master/README.md</docsUrl>
     <bugTrackerUrl>https://github.com/Porkstone/nebula-md/issues</bugTrackerUrl>
     <licenseUrl>https://github.com/Porkstone/nebula-md/blob/master/LICENSE</licenseUrl>
-    <iconUrl>https://raw.githubusercontent.com/Porkstone/nebula-md/master/assets/nebula-md-preview.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/Porkstone/nebula-md@33658099f875638e2a58ca2acff9ba9990b1a9c6/assets/nebula-md-preview.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <copyright>Copyright 2026 Charlie</copyright>
     <releaseNotes>Initial Chocolatey package for nebula-md.</releaseNotes>
