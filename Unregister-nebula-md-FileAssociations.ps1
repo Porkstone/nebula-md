@@ -2,8 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $classesRoot = 'HKCU:\Software\Classes'
 $targets = @(
-    (Join-Path $classesRoot 'Applications\MarkdownPreviewer.exe'),
-    (Join-Path $classesRoot 'Markgig.Markdown')
+    (Join-Path $classesRoot 'Applications\nebula-md.exe'),
+    (Join-Path $classesRoot 'nebula-md.Markdown')
 )
 
 foreach ($target in $targets) {
@@ -15,7 +15,7 @@ foreach ($target in $targets) {
 foreach ($extension in @('.md', '.markdown', '.mdown')) {
     $openWithKey = Join-Path $classesRoot ($extension + '\OpenWithProgids')
     if (Test-Path -LiteralPath $openWithKey) {
-        Remove-ItemProperty -LiteralPath $openWithKey -Name 'Markgig.Markdown' -ErrorAction SilentlyContinue
+        Remove-ItemProperty -LiteralPath $openWithKey -Name 'nebula-md.Markdown' -ErrorAction SilentlyContinue
     }
 }
 
@@ -32,4 +32,4 @@ public static class ShellAssociationRefresh
 }
 [ShellAssociationRefresh]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)
 
-Write-Host 'Markgig file integration has been removed.'
+Write-Host 'nebula-md file integration has been removed.'

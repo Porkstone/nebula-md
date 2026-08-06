@@ -1,0 +1,20 @@
+VERIFICATION
+
+Verification is intended to assist Chocolatey moderators and community members in verifying that this package's embedded software is authentic.
+
+The embedded file tools\nebula-md.exe is built from the source code maintained by the software author at:
+https://github.com/Porkstone/nebula-md
+
+Build instructions:
+
+1. Check out the source corresponding to version 1.0.2.
+2. From the repository root, run:
+   dotnet publish -c Release -r win-x64 --self-contained true -o dist
+3. Calculate the checksum with:
+   Get-FileHash -LiteralPath dist\nebula-md.exe -Algorithm SHA256
+
+Embedded binary checksum:
+
+  file: nebula-md.exe
+  size: 163611860 bytes
+  sha256: 0A92CC10591AA99FFD979A95240B37195586EDE56CD6FB92EE11A025AE6DEFC8

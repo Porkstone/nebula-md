@@ -1,4 +1,4 @@
-# Nebula-MD Markdown Editor
+# nebula-md Markdown Editor
 
  Windows Markdown editor and live previewer.
 
@@ -15,9 +15,9 @@
 
 ## Windows “Open with” integration
 
-Run `Register-Nebula-MD.ps1` from the published application folder to add **nebula-md** to the Windows **Open with** list for `.md`, `.markdown`, and `.mdown` files. The registration applies only to the current Windows user and does not replace their existing default app.
+Run `Register-nebula-md-FileAssociations.ps1` from the published application folder to add **nebula-md** to the Windows **Open with** list for `.md`, `.markdown`, and `.mdown` files. The registration applies only to the current Windows user and does not replace their existing default app.
 
-Run `Unregister-Nebula-MD.ps1` to remove the integration.
+Run `Unregister-nebula-md-FileAssociations.ps1` to remove the integration.
 
 Raw HTML is intentionally displayed as text rather than executed, preventing scripts embedded in a Markdown file from running inside the preview.
 

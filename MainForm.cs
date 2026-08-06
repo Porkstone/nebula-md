@@ -6,7 +6,7 @@ using Markdig;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-namespace MarkdownPreviewer;
+namespace NebulaMd;
 
 internal sealed class MainForm : Form
 {
@@ -46,7 +46,7 @@ internal sealed class MainForm : Form
     public MainForm(string? path)
     {
         initialPath = path;
-        Text = "Margin — Markdown Previewer";
+        Text = "nebula-md — Markdown editor";
         MinimumSize = new Size(1120, 620);
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(1320, 820);
@@ -97,7 +97,7 @@ internal sealed class MainForm : Form
         var brand = new Label
         {
             AutoSize = true,
-            Text = "MARGIN",
+            Text = "nebula-md",
             Font = new Font("Bahnschrift SemiBold", 15f, FontStyle.Bold),
             ForeColor = Color.FromArgb(240, 238, 228),
             Location = new Point(84, 14)
@@ -331,7 +331,7 @@ internal sealed class MainForm : Form
         {
             var userDataFolder = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Margin Markdown Previewer",
+                "nebula-md",
                 "WebView2");
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
             await preview.EnsureCoreWebView2Async(environment);
@@ -356,7 +356,7 @@ internal sealed class MainForm : Form
         {
             statusLabel.Text = "WEBVIEW2 RUNTIME REQUIRED";
             MessageBox.Show(
-                "Margin needs the Microsoft Edge WebView2 Runtime to display previews. Install the Evergreen WebView2 Runtime, then reopen the app.",
+                "nebula-md needs the Microsoft Edge WebView2 Runtime to display previews. Install the Evergreen WebView2 Runtime, then reopen the app.",
                 "Preview runtime missing",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -367,7 +367,7 @@ internal sealed class MainForm : Form
     {
         suppressEditorChange = true;
         editor.Text = """
-# Your Markdown, in the margins
+# Welcome to nebula-md
 
 Open a `.md` file or drop one anywhere on this window. The preview updates as you type.
 
@@ -721,7 +721,7 @@ document.addEventListener('click', function (event) {
         var words = Regex.Matches(editor.Text, @"[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*").Count;
         var lines = editor.TextLength == 0 ? 0 : editor.Lines.Length;
         metricsLabel.Text = $"{words:N0} WORDS   {lines:N0} LINES   UTF-8";
-        Text = $"{(isDirty ? "• " : string.Empty)}{(currentPath is null ? "Untitled" : Path.GetFileName(currentPath))} — Margin";
+        Text = $"{(isDirty ? "• " : string.Empty)}{(currentPath is null ? "Untitled" : Path.GetFileName(currentPath))} — nebula-md";
     }
 
     private bool ConfirmDiscardChanges()

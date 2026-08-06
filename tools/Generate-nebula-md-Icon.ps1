@@ -1,6 +1,6 @@
 param(
-    [string]$OutputIcon = (Join-Path $PSScriptRoot '..\assets\Markgig.ico'),
-    [string]$OutputPreview = (Join-Path $PSScriptRoot '..\assets\Markgig-preview.png')
+    [string]$OutputIcon = (Join-Path $PSScriptRoot '..\assets\nebula-md.ico'),
+    [string]$OutputPreview = (Join-Path $PSScriptRoot '..\assets\nebula-md-preview.png')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,7 +22,7 @@ function New-RoundedRectanglePath {
     return $path
 }
 
-function New-MarkgigBitmap {
+function New-NebulaMdBitmap {
     param([int]$Size)
 
     $bitmap = [System.Drawing.Bitmap]::new($Size, $Size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
@@ -92,7 +92,7 @@ $sizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
 $images = [System.Collections.Generic.List[object]]::new()
 try {
     foreach ($size in $sizes) {
-        $bitmap = New-MarkgigBitmap -Size $size
+        $bitmap = New-NebulaMdBitmap -Size $size
         try {
             $stream = [System.IO.MemoryStream]::new()
             $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)

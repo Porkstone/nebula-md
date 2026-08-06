@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>nebula-md</id>
+    <version>1.0.2</version>
+    <title>nebula-md</title>
+    <authors>Charlie</authors>
+    <owners>Charlie</owners>
+    <summary>A focused Windows Markdown editor with live preview.</summary>
+    <description><![CDATA[
+nebula-md is a focused Windows Markdown editor and live previewer.
+
+Features include source, split, and preview layouts; tables, task lists, footnotes, and fenced code blocks; relative images and links; automatic refresh when files change; paper and midnight preview themes; printing; drag-and-drop; and Windows Open with integration.
+]]></description>
+    <projectUrl>https://github.com/Porkstone/nebula-md</projectUrl>
+    <projectSourceUrl>https://github.com/Porkstone/nebula-md</projectSourceUrl>
+    <packageSourceUrl>https://github.com/Porkstone/nebula-md/tree/master/packaging/chocolatey</packageSourceUrl>
+    <docsUrl>https://github.com/Porkstone/nebula-md/blob/master/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/Porkstone/nebula-md/issues</bugTrackerUrl>
+    <licenseUrl>https://github.com/Porkstone/nebula-md/blob/master/LICENSE</licenseUrl>
+    <iconUrl>https://raw.githubusercontent.com/Porkstone/nebula-md/master/assets/nebula-md-preview.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <copyright>Copyright 2026 Charlie</copyright>
+    <releaseNotes>Initial Chocolatey package for nebula-md.</releaseNotes>
+    <tags>nebula-md markdown editor preview windows winforms</tags>
+    <dependencies>
+      <dependency id="webview2-runtime" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+    <file src="..\..\dist\nebula-md.exe" target="tools" />
+    <file src="..\..\Register-nebula-md-FileAssociations.ps1" target="tools" />
+    <file src="..\..\Unregister-nebula-md-FileAssociations.ps1" target="tools" />
+  </files>
+</package>

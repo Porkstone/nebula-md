@@ -1,4 +1,4 @@
-namespace MarkdownPreviewer;
+namespace NebulaMd;
 
 static class Program
 {

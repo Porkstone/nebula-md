@@ -1,5 +1,5 @@
 param(
-    [string]$ExecutablePath = (Join-Path $PSScriptRoot 'MarkdownPreviewer.exe')
+    [string]$ExecutablePath = (Join-Path $PSScriptRoot 'nebula-md.exe')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,13 +9,13 @@ if ([System.IO.Path]::GetExtension($resolvedExecutable) -ne '.exe') {
 }
 
 $classesRoot = 'HKCU:\Software\Classes'
-$applicationKey = Join-Path $classesRoot 'Applications\MarkdownPreviewer.exe'
-$progIdKey = Join-Path $classesRoot 'Markgig.Markdown'
+$applicationKey = Join-Path $classesRoot 'Applications\nebula-md.exe'
+$progIdKey = Join-Path $classesRoot 'nebula-md.Markdown'
 $command = '"' + $resolvedExecutable + '" "%1"'
 
 New-Item -Path $applicationKey -Force | Out-Null
-New-ItemProperty -Path $applicationKey -Name 'FriendlyAppName' -Value 'Markgig' -PropertyType String -Force | Out-Null
-New-ItemProperty -Path $applicationKey -Name 'ApplicationDescription' -Value 'Preview and edit Markdown files in Markgig.' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $applicationKey -Name 'FriendlyAppName' -Value 'nebula-md' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $applicationKey -Name 'ApplicationDescription' -Value 'Preview and edit Markdown files in nebula-md.' -PropertyType String -Force | Out-Null
 
 $applicationCommandKey = Join-Path $applicationKey 'shell\open\command'
 New-Item -Path $applicationCommandKey -Force | Out-Null
@@ -42,7 +42,7 @@ Set-Item -Path $progIdCommandKey -Value $command
 foreach ($extension in @('.md', '.markdown', '.mdown')) {
     $openWithKey = Join-Path $classesRoot ($extension + '\OpenWithProgids')
     New-Item -Path $openWithKey -Force | Out-Null
-    New-ItemProperty -Path $openWithKey -Name 'Markgig.Markdown' -Value '' -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $openWithKey -Name 'nebula-md.Markdown' -Value '' -PropertyType String -Force | Out-Null
 }
 
 if (-not ('ShellAssociationRefresh' -as [type])) {
@@ -58,5 +58,5 @@ public static class ShellAssociationRefresh
 }
 [ShellAssociationRefresh]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)
 
-Write-Host "Markgig is registered for Markdown files."
+Write-Host "nebula-md is registered for Markdown files."
 Write-Host "Executable: $resolvedExecutable"

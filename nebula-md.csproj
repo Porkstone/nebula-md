@@ -6,9 +6,10 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>MarkdownPreviewer</AssemblyName>
-    <ApplicationIcon>assets\Markgig.ico</ApplicationIcon>
-    <Product>Margin Markdown Previewer</Product>
+    <RootNamespace>NebulaMd</RootNamespace>
+    <AssemblyName>nebula-md</AssemblyName>
+    <ApplicationIcon>assets\nebula-md.ico</ApplicationIcon>
+    <Product>nebula-md</Product>
     <Description>A focused Windows editor and live preview for Markdown files.</Description>
     <Version>1.0.2</Version>
     <PublishSingleFile>true</PublishSingleFile>
@@ -23,8 +24,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Register-Markgig.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Include="Unregister-Markgig.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Register-nebula-md-FileAssociations.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Unregister-nebula-md-FileAssociations.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
