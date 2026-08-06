@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Markgig application icon</title>
+  <desc id="desc">A warm paper document with an ochre M on a dark rounded square.</desc>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#1c1e1b"/>
+  <path d="M69 43h91l44 44v126H69z" fill="#f6f1e6"/>
+  <path d="M160 43v44h44z" fill="#d9d1c2"/>
+  <path d="M98 164v-54l30 32 30-32v54" fill="none" stroke="#daa641" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
