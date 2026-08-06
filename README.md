@@ -1,6 +1,20 @@
 # nebula-md Markdown Editor
 
- Windows Markdown editor and live previewer.
+Windows Markdown editor and live previewer.[^license]
+
+## Install on Windows with Chocolatey
+
+Open PowerShell as an administrator and run:
+
+```powershell
+choco install nebula-md -y
+```
+
+Chocolatey installs nebula-md, adds it to the Start menu, and registers it as an option for opening Markdown files. To install a newer version when one is available, run:
+
+```powershell
+choco upgrade nebula-md -y
+```
 
 ## Features
 
@@ -29,3 +43,5 @@ dotnet publish -c Release -r win-x64 --self-contained true
 ```
 
 The published app uses the Microsoft Edge WebView2 Runtime included with current Windows 10 and Windows 11 installations.
+
+[^license]: nebula-md is open-source software distributed under the [MIT License](LICENSE).
