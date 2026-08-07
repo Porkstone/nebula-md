@@ -5,7 +5,6 @@ $executablePath = Join-Path $toolsDir 'nebula-md.exe'
 $guiMarkerPath = "$executablePath.gui"
 $skipAutoUninstallerPath = Join-Path $toolsDir '.skipAutoUninstaller'
 $shortcutPath = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\nebula-md.lnk'
-$registrationScript = Join-Path $toolsDir 'Register-nebula-md-FileAssociations.ps1'
 
 if (-not (Test-Path -LiteralPath $executablePath -PathType Leaf)) {
     throw "nebula-md executable was not found: $executablePath"
@@ -19,6 +18,10 @@ Install-ChocolateyShortcut `
     -TargetPath $executablePath `
     -WorkingDirectory $toolsDir
 
-& $registrationScript -ExecutablePath $executablePath
+Start-ChocolateyProcessAsAdmin `
+    -Statements '--register-file-associations' `
+    -ExeToRun $executablePath `
+    -ValidExitCodes @(0) `
+    -WorkingDirectory $toolsDir
 
 Write-Host 'nebula-md has been installed.'

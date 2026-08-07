@@ -2,6 +2,10 @@
 
 Windows Markdown editor and live previewer.[^license]
 
+## Why was this application built
+
+It was built to allow quick previews and small edits to Markdown files on Windows. Other editors like Cursor felt unnecessarily heavy.
+
 ## Install on Windows with Chocolatey
 
 Open PowerShell as an administrator and run:
@@ -29,9 +33,17 @@ choco upgrade nebula-md -y
 
 ## Windows “Open with” integration
 
-Run `Register-nebula-md-FileAssociations.ps1` from the published application folder to add **nebula-md** to the Windows **Open with** list for `.md`, `.markdown`, and `.mdown` files. The registration applies only to the current Windows user and does not replace their existing default app.
+Chocolatey registers nebula-md as an option for opening Markdown files automatically. When using the portable executable, run the following command from its folder to add nebula-md to the Windows **Open with** list for `.md`, `.markdown`, and `.mdown` files:
 
-Run `Unregister-nebula-md-FileAssociations.ps1` to remove the integration.
+```powershell
+.\nebula-md.exe --register-file-associations
+```
+
+The registration applies only to the current Windows user and does not replace their existing default app. To remove the integration, run:
+
+```powershell
+.\nebula-md.exe --unregister-file-associations
+```
 
 Raw HTML is intentionally displayed as text rather than executed, preventing scripts embedded in a Markdown file from running inside the preview.
 

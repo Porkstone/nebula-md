@@ -1,11 +1,15 @@
 $ErrorActionPreference = 'Stop'
 
 $toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$executablePath = Join-Path $toolsDir 'nebula-md.exe'
 $shortcutPath = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\nebula-md.lnk'
-$unregistrationScript = Join-Path $toolsDir 'Unregister-nebula-md-FileAssociations.ps1'
 
-if (Test-Path -LiteralPath $unregistrationScript -PathType Leaf) {
-    & $unregistrationScript
+if (Test-Path -LiteralPath $executablePath -PathType Leaf) {
+    Start-ChocolateyProcessAsAdmin `
+        -Statements '--unregister-file-associations' `
+        -ExeToRun $executablePath `
+        -ValidExitCodes @(0) `
+        -WorkingDirectory $toolsDir
 }
 
 if (Test-Path -LiteralPath $shortcutPath -PathType Leaf) {

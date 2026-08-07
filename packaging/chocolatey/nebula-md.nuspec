@@ -3,7 +3,7 @@
   <metadata>
     <id>nebula-md</id>
     <version>1.0.2</version>
-    <title>nebula-md</title>
+    <title>nebula-md Markdown Editor</title>
     <authors>Charlie</authors>
     <owners>Charlie</owners>
     <summary>A focused Windows Markdown editor with live preview.</summary>
@@ -24,13 +24,11 @@ Features include source, split, and preview layouts; tables, task lists, footnot
     <releaseNotes>Initial Chocolatey package for nebula-md.</releaseNotes>
     <tags>nebula-md markdown editor preview windows winforms</tags>
     <dependencies>
-      <dependency id="webview2-runtime" />
+      <dependency id="webview2-runtime" version="[151.0.4129.59,)" />
     </dependencies>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />
     <file src="..\..\dist\nebula-md.exe" target="tools" />
-    <file src="..\..\Register-nebula-md-FileAssociations.ps1" target="tools" />
-    <file src="..\..\Unregister-nebula-md-FileAssociations.ps1" target="tools" />
   </files>
 </package>
