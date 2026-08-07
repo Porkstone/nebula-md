@@ -7,7 +7,7 @@ https://github.com/Porkstone/nebula-md
 
 Build instructions:
 
-1. Check out the source corresponding to version 1.0.2.
+1. Check out source commit 429fdc5f40a81191e1eab81d00fe281bff27e03a for version 1.0.2.
 2. From the repository root, run:
    dotnet publish -c Release -r win-x64 --self-contained true -o dist
 3. Calculate the checksum with:
