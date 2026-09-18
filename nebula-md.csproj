@@ -11,7 +11,7 @@
     <ApplicationIcon>assets\nebula-md.ico</ApplicationIcon>
     <Product>nebula-md</Product>
     <Description>A focused Windows editor and live preview for Markdown files.</Description>
-    <Version>1.0.2</Version>
+    <Version>1.1.0</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>

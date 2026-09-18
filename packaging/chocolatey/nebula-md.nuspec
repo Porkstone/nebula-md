@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>nebula-md</id>
-    <version>1.0.2</version>
+    <version>1.1.0</version>
     <title>nebula-md Markdown Editor</title>
     <authors>Charlie</authors>
     <owners>Charlie</owners>
@@ -10,7 +10,7 @@
     <description><![CDATA[
 nebula-md is a focused Windows Markdown editor and live previewer.
 
-Features include source, split, and preview layouts; tables, task lists, footnotes, and fenced code blocks; relative images and links; automatic refresh when files change; paper and midnight preview themes; printing; drag-and-drop; and Windows Open with integration.
+Features include a multi-document workspace with tabs and a sorted sidebar; source, split, and preview layouts; tables, task lists, footnotes, and fenced code blocks; relative images and links; automatic refresh when files change; paper and midnight preview themes; printing; drag-and-drop; and Windows Open with integration.
 ]]></description>
     <projectUrl>https://github.com/Porkstone/nebula-md</projectUrl>
     <projectSourceUrl>https://github.com/Porkstone/nebula-md</projectSourceUrl>
@@ -21,7 +21,7 @@ Features include source, split, and preview layouts; tables, task lists, footnot
     <iconUrl>https://cdn.jsdelivr.net/gh/Porkstone/nebula-md@33658099f875638e2a58ca2acff9ba9990b1a9c6/assets/nebula-md-preview.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <copyright>Copyright 2026 Charlie</copyright>
-    <releaseNotes>Initial Chocolatey package for nebula-md.</releaseNotes>
+    <releaseNotes>Version 1.1.0 adds a multi-document workspace with tabs and a sorted sidebar, multiple-file opening, single-instance handoff, per-document unsaved edits, and background disk-change tracking.</releaseNotes>
     <tags>nebula-md markdown editor preview windows winforms</tags>
     <dependencies>
       <dependency id="webview2-runtime" version="[151.0.4129.59,)" />
