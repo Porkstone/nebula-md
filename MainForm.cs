@@ -1,7 +1,8 @@
 using System.Diagnostics;
-using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using Markdig;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -30,22 +31,27 @@ internal sealed class MainForm : Form
     private readonly Label metricsLabel = new();
     private readonly Panel externalChangeBanner = new();
     private readonly Dictionary<DisplayMode, Button> modeButtons = new();
-
-    private string? currentPath;
-    private string? initialPath;
-    private string documentNewLine = Environment.NewLine;
-    private bool isDirty;
+    private readonly TabControl documentTabs = new();
+    private readonly ListBox documentList = new();
+    private readonly List<OpenDocument> documents = new();
+    private readonly Dictionary<OpenDocument, TabPage> documentPages = new();
+    private OpenDocument activeDocument = new();
+    private readonly string[] initialPaths;
+    private bool synchronizingNavigation;
     private bool suppressEditorChange;
     private bool webViewReady;
+    private bool previewDocumentReady;
+    private bool previewNavigationPending;
+    private OpenDocument? renderedDocument;
+    private int previewRevision;
+    private readonly Dictionary<string, string> previewFolderHosts = new(StringComparer.OrdinalIgnoreCase);
     private bool darkPreview;
-    private DateTime ignoreWatcherUntilUtc;
-    private FileSystemWatcher? watcher;
     private CancellationTokenSource? renderDelay;
     private DisplayMode displayMode = DisplayMode.Split;
 
-    public MainForm(string? path)
+    public MainForm(params string[] paths)
     {
-        initialPath = path;
+        initialPaths = paths;
         Text = "nebula-md — Markdown editor";
         MinimumSize = new Size(1120, 620);
         StartPosition = FormStartPosition.CenterScreen;
@@ -61,6 +67,7 @@ internal sealed class MainForm : Form
 
         BuildInterface();
         WireEvents();
+        AddDocument(activeDocument);
         ShowWelcomeDocument();
     }
 
@@ -128,7 +135,7 @@ internal sealed class MainForm : Form
         var printButton = CreateToolbarButton("PRINT", "Print the rendered document (Ctrl+P)", async (_, _) => await PrintPreviewAsync(), 66);
         var reloadButton = CreateToolbarButton("RELOAD", "Reload from disk (F5)", (_, _) => ReloadFromDisk(), 76);
         var saveButton = CreateToolbarButton("SAVE", "Save Markdown (Ctrl+S)", (_, _) => SaveDocument(), 62, accent: true);
-        var openButton = CreateToolbarButton("OPEN", "Open a Markdown file (Ctrl+O)", (_, _) => ChooseFile(), 62);
+        var openButton = CreateToolbarButton("OPEN", "Open Markdown files (Ctrl+O)", (_, _) => ChooseFile(), 62);
 
         actions.Controls.Add(themeButton);
         actions.Controls.Add(printButton);
@@ -185,7 +192,199 @@ internal sealed class MainForm : Form
 
         split.Panel1.Controls.Add(sourcePanel);
         split.Panel2.Controls.Add(previewPanel);
-        return split;
+        // Keep the editor and WebView in a stable parent beneath the tab strip.
+        // Moving a WebView between TabPages hides its native surface on every switch.
+        documentTabs.Dock = DockStyle.Top;
+        documentTabs.Height = 40;
+        documentTabs.DrawMode = TabDrawMode.OwnerDrawFixed;
+        documentTabs.SizeMode = TabSizeMode.Fixed;
+        documentTabs.ItemSize = new Size(180, 32);
+        documentTabs.ShowToolTips = true;
+        documentTabs.AccessibleName = "Document tabs";
+        documentTabs.DrawItem += DrawDocumentTab;
+        documentTabs.SelectedIndexChanged += (_, _) =>
+        {
+            if (!synchronizingNavigation && documentTabs.SelectedTab?.Tag is OpenDocument document)
+                ActivateDocument(document);
+        };
+        documentTabs.MouseDown += (_, e) =>
+        {
+            for (var index = 0; index < documentTabs.TabCount; index++)
+            {
+                var bounds = documentTabs.GetTabRect(index);
+                if (bounds.Contains(e.Location) &&
+                    (e.Button == MouseButtons.Middle ||
+                     (e.Button == MouseButtons.Left && GetTabCloseBounds(bounds).Contains(e.Location))))
+                {
+                    CloseDocument((OpenDocument)documentTabs.TabPages[index].Tag!);
+                    break;
+                }
+            }
+        };
+
+        documentList.Dock = DockStyle.Fill;
+        documentList.BorderStyle = BorderStyle.None;
+        documentList.BackColor = DeepInk;
+        documentList.ForeColor = Lichen;
+        documentList.Font = new Font("Bahnschrift", 10f);
+        documentList.IntegralHeight = false;
+        documentList.DrawMode = DrawMode.OwnerDrawFixed;
+        documentList.ItemHeight = 34;
+        documentList.AccessibleName = "Open documents sorted by name";
+        documentList.DrawItem += (_, e) =>
+        {
+            if (e.Index < 0) return;
+            var selected = (e.State & DrawItemState.Selected) != 0;
+            using var background = new SolidBrush(selected ? Color.FromArgb(65, 70, 59) : DeepInk);
+            e.Graphics.FillRectangle(background, e.Bounds);
+            var bounds = Rectangle.Inflate(e.Bounds, -12, 0);
+            TextRenderer.DrawText(e.Graphics, documentList.Items[e.Index].ToString(), documentList.Font,
+                bounds, selected ? Paper : Lichen,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            e.DrawFocusRectangle();
+        };
+        documentList.SelectedIndexChanged += (_, _) =>
+        {
+            if (!synchronizingNavigation && documentList.SelectedItem is OpenDocument document)
+                ActivateDocument(document);
+        };
+
+        var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = DeepInk };
+        sidebar.Controls.Add(documentList);
+        sidebar.Controls.Add(BuildPaneHeading("OPEN DOCUMENTS", "A–Z", DeepInk));
+        var workspace = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Vertical,
+            // Set valid dimensions before the splitter distance and panel minimums.
+            Size = new Size(1320, 700),
+            SplitterWidth = 6,
+            SplitterDistance = 220,
+            Panel1MinSize = 180,
+            Panel2MinSize = 640,
+            FixedPanel = FixedPanel.Panel1,
+            BackColor = Color.FromArgb(61, 63, 57),
+            AccessibleName = "Resize Open Documents sidebar"
+        };
+        var documentPane = new Panel { Dock = DockStyle.Fill, BackColor = Ink };
+        documentPane.Controls.Add(split);
+        documentPane.Controls.Add(documentTabs);
+        workspace.Panel1.Controls.Add(sidebar);
+        workspace.Panel2.Controls.Add(documentPane);
+        return workspace;
+    }
+
+    private static Rectangle GetTabCloseBounds(Rectangle tabBounds) =>
+        new(tabBounds.Right - 25, tabBounds.Top + 6, 20, tabBounds.Height - 12);
+
+    private void DrawDocumentTab(object? sender, DrawItemEventArgs e)
+    {
+        var page = documentTabs.TabPages[e.Index];
+        var selected = e.Index == documentTabs.SelectedIndex;
+        using var background = new SolidBrush(selected ? Ink : DeepInk);
+        e.Graphics.FillRectangle(background, e.Bounds);
+        var textBounds = new Rectangle(e.Bounds.Left + 10, e.Bounds.Top, e.Bounds.Width - 38, e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, page.Text, Font, textBounds, selected ? Paper : Muted,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        TextRenderer.DrawText(e.Graphics, "×", Font, GetTabCloseBounds(e.Bounds), selected ? Ochre : Muted,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        if (selected)
+        {
+            using var accent = new SolidBrush(Ochre);
+            e.Graphics.FillRectangle(accent, e.Bounds.Left, e.Bounds.Bottom - 3, e.Bounds.Width, 3);
+        }
+    }
+
+    private void AddDocument(OpenDocument document)
+    {
+        documents.Add(document);
+        var page = new TabPage(document.Caption)
+        {
+            Tag = document,
+            ToolTipText = document.Path ?? document.Name,
+            BackColor = Ink,
+            Padding = Padding.Empty
+        };
+        documentPages.Add(document, page);
+        synchronizingNavigation = true;
+        documentTabs.TabPages.Add(page);
+        synchronizingNavigation = false;
+        RefreshDocumentNavigation();
+    }
+
+    private void RefreshDocumentNavigation()
+    {
+        synchronizingNavigation = true;
+        documentList.BeginUpdate();
+        try
+        {
+            documentList.Items.Clear();
+            foreach (var document in documents.OrderBy(document => document.Name, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(document => document.Path, StringComparer.OrdinalIgnoreCase))
+            {
+                documentList.Items.Add(document);
+                documentPages[document].Text = document.Caption;
+                documentPages[document].ToolTipText = document.Path ?? document.Name;
+            }
+            documentList.SelectedItem = activeDocument;
+            if (documentPages.TryGetValue(activeDocument, out var page)) documentTabs.SelectedTab = page;
+            documentTabs.Invalidate();
+        }
+        finally
+        {
+            documentList.EndUpdate();
+            synchronizingNavigation = false;
+        }
+    }
+
+    private void ActivateDocument(OpenDocument document)
+    {
+        if (!documents.Contains(document)) return;
+        activeDocument.SelectionStart = editor.SelectionStart;
+        activeDocument.SelectionLength = editor.SelectionLength;
+        activeDocument = document;
+        suppressEditorChange = true;
+        try
+        {
+            editor.Text = document.Text;
+            editor.Select(Math.Min(document.SelectionStart, editor.TextLength),
+                Math.Min(document.SelectionLength, Math.Max(0, editor.TextLength - document.SelectionStart)));
+            editor.ScrollToCaret();
+        }
+        finally { suppressEditorChange = false; }
+        externalChangeBanner.Visible = document.ChangedOnDisk;
+        RefreshDocumentNavigation();
+        UpdateDocumentStatus();
+        RenderPreview();
+    }
+
+    private void CloseDocument(OpenDocument document)
+    {
+        if (!ConfirmCloseDocument(document)) return;
+        var index = documents.IndexOf(document);
+        var wasActive = document == activeDocument;
+        RemoveDocument(document);
+        if (documents.Count == 0)
+        {
+            activeDocument = new OpenDocument();
+            AddDocument(activeDocument);
+            ShowWelcomeDocument();
+            ActivateDocument(activeDocument);
+        }
+        else if (wasActive) ActivateDocument(documents[Math.Min(index, documents.Count - 1)]);
+        else RefreshDocumentNavigation();
+    }
+
+    private void RemoveDocument(OpenDocument document)
+    {
+        document.Dispose();
+        var page = documentPages[document];
+        synchronizingNavigation = true;
+        documentTabs.TabPages.Remove(page);
+        synchronizingNavigation = false;
+        documentPages.Remove(document);
+        documents.Remove(document);
+        page.Dispose();
     }
 
     private Control BuildPaneHeading(string title, string detail, Color background, bool darkText = false)
@@ -223,7 +422,7 @@ internal sealed class MainForm : Form
 
         var text = new Label
         {
-            Text = "This file changed on disk while you have unsaved edits.",
+            Text = "This file changed or became unavailable on disk. Reload to use the disk version.",
             AutoSize = true,
             ForeColor = Color.FromArgb(255, 231, 181),
             Location = new Point(18, 13)
@@ -320,13 +519,14 @@ internal sealed class MainForm : Form
         DragEnter += (_, e) => e.Effect = HasMarkdownFile(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
         DragDrop += (_, e) =>
         {
-            var path = GetDroppedMarkdownFile(e.Data);
-            if (path is not null && ConfirmDiscardChanges()) OpenFile(path);
+            foreach (var path in GetDroppedMarkdownFiles(e.Data)) OpenFile(path);
         };
     }
 
     private async Task InitializePreviewAsync()
     {
+        // Opening and editing files must also work when the preview runtime is unavailable.
+        foreach (var path in initialPaths) OpenFile(path);
         try
         {
             var userDataFolder = Path.Combine(
@@ -339,18 +539,20 @@ internal sealed class MainForm : Form
             preview.CoreWebView2.Settings.IsStatusBarEnabled = false;
             preview.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true;
             preview.CoreWebView2.NavigationStarting += PreviewOnNavigationStarting;
+            preview.CoreWebView2.NavigationCompleted += (_, e) =>
+            {
+                if (!previewNavigationPending) return;
+                previewNavigationPending = false;
+                previewDocumentReady = e.IsSuccess;
+                if (previewDocumentReady) RenderPreview();
+                else statusLabel.Text = "PREVIEW ERROR";
+            };
             preview.CoreWebView2.NewWindowRequested += PreviewOnNewWindowRequested;
+            preview.CoreWebView2.AddWebResourceRequestedFilter("https://*.markdown.local/*", CoreWebView2WebResourceContext.All);
+            preview.CoreWebView2.WebResourceRequested += PreviewOnWebResourceRequested;
             webViewReady = true;
 
-            if (!string.IsNullOrWhiteSpace(initialPath) && File.Exists(initialPath))
-            {
-                OpenFile(Path.GetFullPath(initialPath));
-                initialPath = null;
-            }
-            else
-            {
-                RenderPreview();
-            }
+            RenderPreview();
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -369,7 +571,7 @@ internal sealed class MainForm : Form
         editor.Text = """
 # Welcome to nebula-md
 
-Open a `.md` file or drop one anywhere on this window. The preview updates as you type.
+Open one or more `.md` files or drop them anywhere on this window. Each document gets a tab; the sidebar lists open documents by name. The preview updates as you type.
 
 ## A quick formatting check
 
@@ -387,19 +589,27 @@ Console.WriteLine("Hello, Markdown.");
 |:--|:--|
 | `Ctrl+O` | Open file |
 | `Ctrl+S` | Save file |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Tab` | Next tab |
 | `F5` | Reload from disk |
 | `Ctrl+P` | Print preview |
 """;
         editor.SelectionStart = 0;
         editor.SelectionLength = 0;
         suppressEditorChange = false;
-        isDirty = false;
+        activeDocument.Text = editor.Text;
+        activeDocument.IsDirty = false;
+        RefreshDocumentNavigation();
         UpdateDocumentStatus();
     }
 
     private void EditorOnTextChanged(object? sender, EventArgs e)
     {
-        if (!suppressEditorChange) isDirty = true;
+        if (suppressEditorChange) return;
+        var wasDirty = activeDocument.IsDirty;
+        activeDocument.Text = editor.Text;
+        activeDocument.IsDirty = true;
+        if (!wasDirty) RefreshDocumentNavigation();
         UpdateDocumentStatus();
         QueuePreviewRender();
     }
@@ -420,29 +630,59 @@ Console.WriteLine("Hello, Markdown.");
         }
     }
 
-    private void RenderPreview()
+    private async void RenderPreview()
     {
-        if (!webViewReady) return;
+        if (!webViewReady || IsDisposed || Disposing) return;
 
+        var revision = ++previewRevision;
         try
         {
-            var baseFolder = currentPath is null
-                ? Environment.CurrentDirectory
-                : Path.GetDirectoryName(currentPath)!;
-            preview.CoreWebView2.ClearVirtualHostNameToFolderMapping("markdown.local");
-            preview.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                "markdown.local",
-                baseFolder,
-                CoreWebView2HostResourceAccessKind.Allow);
+            if (!previewDocumentReady)
+            {
+                if (!previewNavigationPending)
+                {
+                    previewNavigationPending = true;
+                    preview.NavigateToString(BuildHtmlDocument("nebula-md", string.Empty));
+                }
+                return;
+            }
 
-            var rendered = Markdown.ToHtml(editor.Text, pipeline);
-            var title = WebUtility.HtmlEncode(currentPath is null ? "Untitled" : Path.GetFileNameWithoutExtension(currentPath));
-            preview.NavigateToString(BuildHtmlDocument(title, rendered));
-            statusLabel.Text = isDirty ? "EDITING" : "UP TO DATE";
+            var baseFolder = activeDocument.Path is null
+                ? Environment.CurrentDirectory
+                : Path.GetDirectoryName(activeDocument.Path)!;
+            if (!previewFolderHosts.TryGetValue(baseFolder, out var host))
+            {
+                // Distinct hosts prevent identically named images in different
+                // folders from sharing a cached URL when switching documents.
+                host = $"folder-{previewFolderHosts.Count}.markdown.local";
+                previewFolderHosts.Add(baseFolder, host);
+            }
+
+            var update = JsonSerializer.Serialize(new
+            {
+                title = activeDocument.Path is null ? "Untitled" : Path.GetFileNameWithoutExtension(activeDocument.Path),
+                content = Markdown.ToHtml(editor.Text, pipeline),
+                theme = darkPreview ? "night" : "paper",
+                baseUri = $"https://{host}/",
+                resetScroll = renderedDocument != activeDocument
+            });
+            renderedDocument = activeDocument;
+            await preview.ExecuteScriptAsync($$"""
+                (() => {
+                    const update = {{update}};
+                    document.title = update.title;
+                    document.documentElement.className = update.theme;
+                    document.querySelector('base').href = update.baseUri;
+                    document.querySelector('main').innerHTML = update.content;
+                    if (update.resetScroll) window.scrollTo(0, 0);
+                })();
+                """);
+            if (!IsDisposed && revision == previewRevision)
+                statusLabel.Text = activeDocument.ChangedOnDisk ? "CHANGED ON DISK" : activeDocument.IsDirty ? "EDITING" : "UP TO DATE";
         }
         catch (Exception ex)
         {
-            statusLabel.Text = "PREVIEW ERROR";
+            if (!IsDisposed && revision == previewRevision) statusLabel.Text = "PREVIEW ERROR";
             Debug.WriteLine(ex);
         }
     }
@@ -515,48 +755,59 @@ document.addEventListener('click', function (event) {
 
     private void ChooseFile()
     {
-        if (!ConfirmDiscardChanges()) return;
         using var dialog = new OpenFileDialog
         {
             Title = "Open Markdown",
             Filter = "Markdown files (*.md;*.markdown;*.mdown)|*.md;*.markdown;*.mdown|Text files (*.txt)|*.txt|All files (*.*)|*.*",
             CheckFileExists = true,
-            Multiselect = false
+            Multiselect = true,
+            InitialDirectory = activeDocument.Path is null ? string.Empty : Path.GetDirectoryName(activeDocument.Path)
         };
-        if (dialog.ShowDialog(this) == DialogResult.OK) OpenFile(dialog.FileName);
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            foreach (var path in dialog.FileNames) OpenFile(path);
     }
 
-    private void OpenFile(string path)
+    internal void OpenFile(string path)
     {
         try
         {
             var fullPath = Path.GetFullPath(path);
+            var existing = documents.FirstOrDefault(document =>
+                string.Equals(document.Path, fullPath, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                ActivateDocument(existing);
+                return;
+            }
             var fileText = File.ReadAllText(fullPath);
-            documentNewLine = DetectNewLine(fileText);
-            suppressEditorChange = true;
-            editor.Text = NormalizeForWindowsEditor(fileText);
-            editor.SelectionStart = 0;
-            editor.SelectionLength = 0;
-            currentPath = fullPath;
-            isDirty = false;
-            externalChangeBanner.Visible = false;
-            ConfigureWatcher();
-            UpdateDocumentStatus();
-            RenderPreview();
+            var document = new OpenDocument
+            {
+                Path = fullPath,
+                Text = NormalizeForWindowsEditor(fileText),
+                NewLine = DetectNewLine(fileText)
+            };
+            var welcome = documents.Count == 1 && activeDocument.Path is null && !activeDocument.IsDirty
+                ? activeDocument : null;
+            AddDocument(document);
+            ActivateDocument(document);
+            if (welcome is not null)
+            {
+                RemoveDocument(welcome);
+                RefreshDocumentNavigation();
+            }
+            ConfigureWatcher(document);
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, $"Could not open the file.\n\n{ex.Message}", "Open failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-        finally
-        {
-            suppressEditorChange = false;
-        }
     }
 
     private bool SaveDocument()
     {
-        if (currentPath is null)
+        var document = activeDocument;
+        var targetPath = document.Path;
+        if (targetPath is null)
         {
             using var dialog = new SaveFileDialog
             {
@@ -567,18 +818,28 @@ document.addEventListener('click', function (event) {
                 FileName = "document.md"
             };
             if (dialog.ShowDialog(this) != DialogResult.OK) return false;
-            currentPath = dialog.FileName;
+            targetPath = Path.GetFullPath(dialog.FileName);
+            if (documents.Any(other => other != document &&
+                string.Equals(other.Path, targetPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show(this, "That file is already open in another tab. Choose a different filename.",
+                    "File already open", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
         }
 
         try
         {
-            ignoreWatcherUntilUtc = DateTime.UtcNow.AddSeconds(1.5);
-            var outputText = ConvertToDocumentNewLines(editor.Text, documentNewLine);
-            File.WriteAllText(currentPath, outputText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            isDirty = false;
+            var outputText = ConvertToDocumentNewLines(document.Text, document.NewLine);
+            File.WriteAllText(targetPath, outputText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            document.Path = targetPath;
+            document.IsDirty = false;
+            document.ChangedOnDisk = false;
             externalChangeBanner.Visible = false;
-            ConfigureWatcher();
+            ConfigureWatcher(document);
+            RefreshDocumentNavigation();
             UpdateDocumentStatus();
+            RenderPreview();
             statusLabel.Text = "SAVED";
             return true;
         }
@@ -591,49 +852,98 @@ document.addEventListener('click', function (event) {
 
     private void ReloadFromDisk(bool force = false)
     {
-        if (currentPath is null || !File.Exists(currentPath)) return;
-        if (!force && isDirty)
+        if (activeDocument.Path is null || !File.Exists(activeDocument.Path)) return;
+        if (!force && activeDocument.IsDirty)
         {
             var choice = MessageBox.Show(this, "Reloading will discard your unsaved edits. Continue?", "Reload from disk", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (choice != DialogResult.Yes) return;
         }
-        OpenFile(currentPath);
-        statusLabel.Text = "RELOADED";
+        if (ReloadDocument(activeDocument)) statusLabel.Text = "RELOADED";
     }
 
-    private void ConfigureWatcher()
+    private bool ReloadDocument(OpenDocument document)
     {
-        watcher?.Dispose();
-        watcher = null;
-        if (currentPath is null) return;
-
-        watcher = new FileSystemWatcher(Path.GetDirectoryName(currentPath)!, Path.GetFileName(currentPath))
+        try
         {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
-            EnableRaisingEvents = true
+            var fileText = File.ReadAllText(document.Path!);
+            document.Text = NormalizeForWindowsEditor(fileText);
+            document.NewLine = DetectNewLine(fileText);
+            document.IsDirty = false;
+            document.ChangedOnDisk = false;
+            if (document == activeDocument) ActivateDocument(document);
+            else RefreshDocumentNavigation();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            document.ChangedOnDisk = true;
+            if (document == activeDocument)
+            {
+                externalChangeBanner.Visible = true;
+                statusLabel.Text = "COULD NOT RELOAD";
+            }
+            Debug.WriteLine(ex);
+            return false;
+        }
+    }
+
+    private void ConfigureWatcher(OpenDocument document)
+    {
+        document.Watcher?.Dispose();
+        document.Watcher = null;
+        if (document.Path is null) return;
+
+        var watcher = new FileSystemWatcher(Path.GetDirectoryName(document.Path)!, Path.GetFileName(document.Path))
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName
         };
+        document.Watcher = watcher;
         watcher.Changed += FileChangedOutsideApp;
+        watcher.Created += FileChangedOutsideApp;
         watcher.Renamed += FileChangedOutsideApp;
         watcher.Deleted += FileChangedOutsideApp;
+        watcher.EnableRaisingEvents = true;
     }
 
     private void FileChangedOutsideApp(object sender, FileSystemEventArgs e)
     {
-        if (DateTime.UtcNow < ignoreWatcherUntilUtc || IsDisposed) return;
-        BeginInvoke(async () =>
+        if (IsDisposed || Disposing || !IsHandleCreated) return;
+        try
         {
-            await Task.Delay(180);
-            if (isDirty)
+            BeginInvoke(async () =>
             {
-                externalChangeBanner.Visible = true;
-                statusLabel.Text = "CHANGED ON DISK";
-            }
-            else if (currentPath is not null && File.Exists(currentPath))
-            {
-                OpenFile(currentPath);
-                statusLabel.Text = "SYNCED FROM DISK";
-            }
-        });
+                var document = documents.FirstOrDefault(item => ReferenceEquals(item.Watcher, sender));
+                if (document is null) return;
+                var version = ++document.ChangeVersion;
+                await Task.Delay(180);
+                if (IsDisposed || Disposing || !documents.Contains(document) ||
+                    !ReferenceEquals(document.Watcher, sender) || version != document.ChangeVersion) return;
+
+                // Ignore our own save notifications without hiding real external edits
+                // that arrive immediately after saving.
+                try
+                {
+                    if (File.Exists(document.Path) &&
+                        NormalizeForWindowsEditor(File.ReadAllText(document.Path)) == document.Text)
+                        return;
+                }
+                catch (IOException) { /* A writer may still have the file locked. */ }
+                catch (UnauthorizedAccessException) { /* Show the disk-change banner. */ }
+
+                if (document.IsDirty || !File.Exists(document.Path))
+                {
+                    document.ChangedOnDisk = true;
+                    if (document == activeDocument)
+                    {
+                        externalChangeBanner.Visible = true;
+                        statusLabel.Text = "CHANGED ON DISK";
+                    }
+                }
+                else if (ReloadDocument(document) && document == activeDocument)
+                    statusLabel.Text = "SYNCED FROM DISK";
+            });
+        }
+        catch (InvalidOperationException) { /* The window closed while dispatching. */ }
     }
 
     private void SetDisplayMode(DisplayMode mode)
@@ -676,22 +986,76 @@ document.addEventListener('click', function (event) {
         return Task.CompletedTask;
     }
 
+    private async void PreviewOnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
+    {
+        if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri)) return;
+        var folder = previewFolderHosts.FirstOrDefault(pair => uri.Host.Equals(pair.Value, StringComparison.OrdinalIgnoreCase)).Key;
+        using var deferral = e.GetDeferral();
+        try
+        {
+            // Virtual-host folder mappings only take effect after navigation.
+            // Serve local resources here so new folders work in the persistent page.
+            if (folder is null) throw new FileNotFoundException();
+            var relative = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/')).Replace('/', Path.DirectorySeparatorChar);
+            var path = Path.GetFullPath(Path.Combine(folder, relative));
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
+            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new FileNotFoundException();
+            var bytes = await File.ReadAllBytesAsync(path);
+            if (IsDisposed || Disposing) return;
+            var contentType = Path.GetExtension(path).ToLowerInvariant() switch
+            {
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".svg" => "image/svg+xml",
+                ".webp" => "image/webp",
+                ".avif" => "image/avif",
+                ".bmp" => "image/bmp",
+                ".ico" => "image/x-icon",
+                _ => "application/octet-stream"
+            };
+            e.Response = preview.CoreWebView2.Environment.CreateWebResourceResponse(new MemoryStream(bytes), 200, "OK",
+                $"Content-Type: {contentType}\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            if (!IsDisposed && !Disposing)
+                e.Response = preview.CoreWebView2.Environment.CreateWebResourceResponse(null, 404, "Not Found", string.Empty);
+        }
+        finally
+        {
+            try { deferral.Complete(); }
+            catch (COMException ex)
+            {
+                // WebView2 may finish tearing down while an asynchronous local
+                // resource request is still in flight during window shutdown.
+                Debug.WriteLine(ex);
+            }
+        }
+    }
+
     private void PreviewOnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        if (e.Uri == "about:blank") return;
+        if (e.Uri == "about:blank")
+        {
+            previewDocumentReady = false;
+            previewNavigationPending = true;
+            renderedDocument = null;
+            return;
+        }
         if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri)) return;
 
-        if (uri.Host.Equals("markdown.local", StringComparison.OrdinalIgnoreCase))
+        var folder = previewFolderHosts.FirstOrDefault(pair => uri.Host.Equals(pair.Value, StringComparison.OrdinalIgnoreCase)).Key;
+        if (folder is not null)
         {
-            var extension = Path.GetExtension(uri.AbsolutePath);
-            if (extension.Equals(".md", StringComparison.OrdinalIgnoreCase) || extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase))
+            e.Cancel = true;
+            var relative = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/')).Replace('/', Path.DirectorySeparatorChar);
+            var target = Path.GetFullPath(Path.Combine(folder, relative));
+            if (IsSupportedDocument(uri.AbsolutePath))
             {
-                e.Cancel = true;
-                var folder = currentPath is null ? Environment.CurrentDirectory : Path.GetDirectoryName(currentPath)!;
-                var relative = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/')).Replace('/', Path.DirectorySeparatorChar);
-                var target = Path.GetFullPath(Path.Combine(folder, relative));
-                if (File.Exists(target) && ConfirmDiscardChanges()) OpenFile(target);
+                if (File.Exists(target)) OpenFile(target);
             }
+            else if (File.Exists(target)) OpenExternal(new Uri(target).AbsoluteUri);
             return;
         }
 
@@ -716,18 +1080,20 @@ document.addEventListener('click', function (event) {
 
     private void UpdateDocumentStatus()
     {
-        var name = currentPath is null ? "UNTITLED.MD" : Path.GetFileName(currentPath).ToUpperInvariant();
-        fileLabel.Text = isDirty ? $"{name}  •" : name;
+        var name = activeDocument.Path is null ? "UNTITLED.MD" : Path.GetFileName(activeDocument.Path).ToUpperInvariant();
+        fileLabel.Text = activeDocument.IsDirty ? $"{name}  •" : name;
+        statusLabel.Text = activeDocument.ChangedOnDisk ? "CHANGED ON DISK" : activeDocument.IsDirty ? "EDITING" : "UP TO DATE";
         var words = Regex.Matches(editor.Text, @"[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*").Count;
         var lines = editor.TextLength == 0 ? 0 : editor.Lines.Length;
         metricsLabel.Text = $"{words:N0} WORDS   {lines:N0} LINES   UTF-8";
-        Text = $"{(isDirty ? "• " : string.Empty)}{(currentPath is null ? "Untitled" : Path.GetFileName(currentPath))} — nebula-md";
+        Text = $"{(activeDocument.IsDirty ? "• " : string.Empty)}{(activeDocument.Path is null ? "Untitled" : Path.GetFileName(activeDocument.Path))} — nebula-md";
     }
 
-    private bool ConfirmDiscardChanges()
+    private bool ConfirmCloseDocument(OpenDocument document)
     {
-        if (!isDirty) return true;
-        var choice = MessageBox.Show(this, "Save your changes before opening another file?", "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+        if (!document.IsDirty) return true;
+        ActivateDocument(document);
+        var choice = MessageBox.Show(this, $"Save changes to {document.Name} before closing?", "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
         return choice switch
         {
             DialogResult.Yes => SaveDocument(),
@@ -738,13 +1104,24 @@ document.addEventListener('click', function (event) {
 
     private void MainFormOnFormClosing(object? sender, FormClosingEventArgs e)
     {
-        if (!ConfirmDiscardChanges()) e.Cancel = true;
-        if (!e.Cancel)
+        foreach (var document in documents.ToArray())
         {
-            watcher?.Dispose();
+            if (ConfirmCloseDocument(document)) continue;
+            e.Cancel = true;
+            break;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            foreach (var document in documents) document.Dispose();
             renderDelay?.Cancel();
             renderDelay?.Dispose();
+            renderDelay = null;
         }
+        base.Dispose(disposing);
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -759,6 +1136,15 @@ document.addEventListener('click', function (event) {
                 return true;
             case Keys.Control | Keys.P:
                 _ = PrintPreviewAsync();
+                return true;
+            case Keys.Control | Keys.W:
+                CloseDocument(activeDocument);
+                return true;
+            case Keys.Control | Keys.Tab:
+            case Keys.Control | Keys.Shift | Keys.Tab:
+                var step = keyData.HasFlag(Keys.Shift) ? -1 : 1;
+                var index = (documents.IndexOf(activeDocument) + step + documents.Count) % documents.Count;
+                ActivateDocument(documents[index]);
                 return true;
             case Keys.F5:
                 ReloadFromDisk();
@@ -777,7 +1163,7 @@ document.addEventListener('click', function (event) {
         }
     }
 
-    private static bool HasMarkdownFile(IDataObject? data) => GetDroppedMarkdownFile(data) is not null;
+    private static bool HasMarkdownFile(IDataObject? data) => GetDroppedMarkdownFiles(data).Any();
 
     private static string DetectNewLine(string text)
     {
@@ -798,18 +1184,14 @@ document.addEventListener('click', function (event) {
         return newLine == "\n" ? normalized : normalized.Replace("\n", newLine, StringComparison.Ordinal);
     }
 
-    private static string? GetDroppedMarkdownFile(IDataObject? data)
+    private static IEnumerable<string> GetDroppedMarkdownFiles(IDataObject? data)
     {
-        if (data?.GetData(DataFormats.FileDrop) is not string[] files) return null;
-        return files.FirstOrDefault(path =>
-        {
-            var extension = Path.GetExtension(path);
-            return extension.Equals(".md", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".mdown", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".txt", StringComparison.OrdinalIgnoreCase);
-        });
+        if (data?.GetData(DataFormats.FileDrop) is not string[] files) return [];
+        return files.Where(path => File.Exists(path) && IsSupportedDocument(path));
     }
+
+    private static bool IsSupportedDocument(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() is ".md" or ".markdown" or ".mdown" or ".txt";
 
     private enum DisplayMode
     {

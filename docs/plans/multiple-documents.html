@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Multiple document workspace · nebula-md</title>
+<style>
+body{margin:0;background:#20221f;color:#e6e4db;font:17px/1.65 Georgia,serif}main{max-width:850px;margin:55px auto;padding:0 32px 60px}h1,h2{font-family:Bahnschrift,sans-serif;line-height:1.2}h1{font-size:40px}h2{color:#daad4d;font-size:22px;margin-top:32px}.label{font:12px Bahnschrift,sans-serif;letter-spacing:2px;color:#abb79d}section{border-top:1px solid #45483f;margin-top:30px}li{margin:10px 0}strong{color:#f6f1e6}.mock{display:grid;grid-template-columns:190px 1fr;border:1px solid #45483f;font:14px/1.8 Bahnschrift,sans-serif}.side{padding:16px;background:#181a17}.desk{padding:16px}.selected{color:#daad4d}.tabs{border-bottom:2px solid #daad4d;padding-bottom:9px}small{color:#abb79d}
+</style>
+<main>
+<p class="label">NEBULA-MD · IMPLEMENTATION PLAN</p>
+<h1>Several documents.<br>One reading desk.</h1>
+<p>Open multiple files from the same folder, keep each in its own tab, and switch through an alphabetically sorted list of open documents.</p>
+<div class="mock"><div class="side">OPEN DOCUMENTS<br><span class="selected">Architecture.md</span><br>Notes.md •<br>Readme.md</div><div class="desk"><div class="tabs">Architecture.md × &nbsp; Notes.md • × &nbsp; Readme.md ×</div><p>Source &nbsp; | &nbsp; Live preview</p><small>The selected tab and sidebar entry stay synchronized.</small></div></div>
+<section><h2>Behavior</h2><ul>
+<li>Allow multiple selections in Open, dropped files, and command-line paths. Reopening a file selects its existing tab.</li>
+<li>Keep tabs in opening order; sort sidebar entries by filename, ignoring case. Retain the existing source, split, and preview modes.</li>
+<li>Preserve each document’s text, selection, newline format, unsaved state, and disk-change tracking.</li>
+<li>Close individual tabs with a close button or Ctrl+W; prompt for unsaved edits when closing documents or the app.</li>
+<li>Replace the untouched welcome document on the first file open; preserve it if edited. Files from other folders remain supported.</li>
+</ul></section>
+<section><h2>Validation</h2><p>Build the Windows app and exercise multiple opens, duplicate detection, tab/sidebar synchronization, independent edits and saves, inactive disk changes, closing tabs, and all display modes in an automated WinForms smoke harness. Update the README with the new workflow.</p></section>
+<section><h2>Clarifications</h2><p>None required. The sidebar lists documents that have been opened, rather than every file in the folder.</p></section>
+</main></html>

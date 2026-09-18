@@ -14,7 +14,10 @@ static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm(args.FirstOrDefault()));
+        // Resolve relative arguments in the launching process, before passing
+        // them to an existing window that may have a different working folder.
+        var paths = args.Select(Path.GetFullPath).ToArray();
+        new SingleInstanceApplication().Run(paths);
         return 0;
     }
 
