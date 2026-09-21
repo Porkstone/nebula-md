@@ -30,6 +30,9 @@ internal sealed class MainForm : Form
     private readonly Label statusLabel = new();
     private readonly Label metricsLabel = new();
     private readonly Panel externalChangeBanner = new();
+    private readonly Panel updateBanner = new();
+    private readonly Label updateLabel = new();
+    private CancellationTokenSource? updateCancellation;
     private readonly Dictionary<DisplayMode, Button> modeButtons = new();
     private readonly TabControl documentTabs = new();
     private readonly ListBox documentList = new();
@@ -76,7 +79,47 @@ internal sealed class MainForm : Form
         Controls.Add(BuildWorkspace());
         Controls.Add(BuildStatusBar());
         Controls.Add(BuildExternalChangeBanner());
+        Controls.Add(BuildUpdateBanner());
         Controls.Add(BuildHeader());
+    }
+
+    private Control BuildUpdateBanner()
+    {
+        updateBanner.Dock = DockStyle.Top;
+        updateBanner.Height = 70;
+        updateBanner.Padding = new Padding(18, 8, 18, 8);
+        updateBanner.BackColor = Color.FromArgb(55, 66, 47);
+        updateBanner.Visible = false;
+        updateBanner.AccessibleName = "New version available";
+
+        var dismiss = CreateToolbarButton("DISMISS", "Hide this update for this session", (_, _) => updateBanner.Visible = false, 90);
+        dismiss.Dock = DockStyle.Right;
+        var details = CreateToolbarButton("VIEW UPDATE", "Open the Chocolatey package page", (_, _) => OpenExternal(UpdateChecker.PackageUrl), 130);
+        details.Dock = DockStyle.Right;
+        updateLabel.Dock = DockStyle.Fill;
+        updateLabel.TextAlign = ContentAlignment.MiddleLeft;
+        updateLabel.ForeColor = Paper;
+        updateLabel.AutoEllipsis = true;
+        updateBanner.Controls.Add(updateLabel);
+        updateBanner.Controls.Add(details);
+        updateBanner.Controls.Add(dismiss);
+        return updateBanner;
+    }
+
+    private void ShowAvailableUpdate(Version version)
+    {
+        if (IsDisposed || Disposing) return;
+        updateLabel.Text = $"nebula-md {version} is available on Chocolatey.\nSave your work and close the app, then run as administrator: choco upgrade nebula-md -y";
+        updateBanner.Visible = true;
+    }
+
+    private async Task WatchForUpdatesAsync()
+    {
+        if (updateCancellation is not null) return;
+        using var cancellation = new CancellationTokenSource();
+        updateCancellation = cancellation;
+        try { await new UpdateChecker().RunAsync(ShowAvailableUpdate, cancellation.Token); }
+        finally { updateCancellation = null; }
     }
 
     private Control BuildHeader()
@@ -514,6 +557,7 @@ internal sealed class MainForm : Form
     private void WireEvents()
     {
         Shown += async (_, _) => await InitializePreviewAsync();
+        Shown += async (_, _) => await WatchForUpdatesAsync();
         editor.TextChanged += EditorOnTextChanged;
         FormClosing += MainFormOnFormClosing;
         DragEnter += (_, e) => e.Effect = HasMarkdownFile(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
@@ -990,7 +1034,7 @@ document.addEventListener('click', function (event) {
     {
         if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri)) return;
         var folder = previewFolderHosts.FirstOrDefault(pair => uri.Host.Equals(pair.Value, StringComparison.OrdinalIgnoreCase)).Key;
-        using var deferral = e.GetDeferral();
+        var deferral = e.GetDeferral();
         try
         {
             // Virtual-host folder mappings only take effect after navigation.
@@ -1024,7 +1068,8 @@ document.addEventListener('click', function (event) {
         }
         finally
         {
-            try { deferral.Complete(); }
+            // Dispose completes the deferral; do not also call Complete.
+            try { deferral.Dispose(); }
             catch (COMException ex)
             {
                 // WebView2 may finish tearing down while an asynchronous local
@@ -1116,6 +1161,7 @@ document.addEventListener('click', function (event) {
     {
         if (disposing)
         {
+            updateCancellation?.Cancel();
             foreach (var document in documents) document.Dispose();
             renderDelay?.Cancel();
             renderDelay?.Dispose();

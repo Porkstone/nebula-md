@@ -22,6 +22,8 @@ choco upgrade nebula-md -y
 
 ## Features
 
+- Check Chocolatey for updates at startup and every 24 hours while the app remains open. A dismissible banner links to the newest approved stable package and explains how to upgrade. Each newer version is announced once per session; offline or failed checks are silent and retry the next day. No updates are installed automatically.
+
 - Open one or more Markdown files with the **Open** button, `Ctrl+O`, drag-and-drop, or by passing file paths to the executable. Use Ctrl or Shift in the Open dialog to select multiple files from a folder.
 - Keep each document in its own tab, with independent unsaved edits. Reopening a file switches to its existing tab.
 - Opening multiple files from Windows Explorer sends them to tabs in a single app window. Later launches reuse that window and bring it to the foreground.

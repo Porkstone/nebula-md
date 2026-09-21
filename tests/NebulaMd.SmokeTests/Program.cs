@@ -14,6 +14,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         if (args.FirstOrDefault() == "--instance-host") return SingleInstanceChecks.RunHost(args);
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
@@ -21,6 +22,8 @@ internal static class Program
         Directory.CreateDirectory(folder);
         try
         {
+            Task.Run(() => UpdateChecks.Run(Check)).GetAwaiter().GetResult();
+            if (args.FirstOrDefault() == "--check-updates") return 0;
             if (args.FirstOrDefault() != "--check-instances") Run(folder);
             SingleInstanceChecks.Run(folder, Check);
             Console.WriteLine($"PASS: {checks} document workspace checks.");
@@ -169,10 +172,19 @@ internal static class Program
         Call(form, "OpenFile", alphaPath);
         Check(tabs.TabCount == 2 && list.Items.Cast<object>().Any(item => Property<string>(item, "Text") == "Keep my untitled edits"), "Opening preserves edited untitled document");
 
+        Call(form, "ShowAvailableUpdate", new Version(9, 0, 0));
+        var updateBanner = Field<Panel>(form, "updateBanner");
+        var updateLabel = Field<Label>(form, "updateLabel");
+        Check(updateBanner.Visible && updateLabel.Text.Contains("9.0.0") && updateLabel.Text.Contains("choco upgrade nebula-md -y"),
+            "Update banner names the version and explains upgrading");
+        Check(editor.Text == "Keep my untitled edits" || list.Items.Cast<object>().Any(item => Property<string>(item, "Text") == "Keep my untitled edits"),
+            "Update alert preserves unsaved documents");
         using var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height);
         form.DrawToBitmap(bitmap, form.ClientRectangle);
         var screenshot = Environment.GetEnvironmentVariable("NEBULA_SMOKE_SCREENSHOT");
         if (!string.IsNullOrWhiteSpace(screenshot)) bitmap.Save(screenshot);
+        updateBanner.Controls.OfType<Button>().Single(button => button.Text == "DISMISS").PerformClick();
+        Check(!updateBanner.Visible, "Update banner can be dismissed");
     }
 
     private static object Active(Form form) => Field<object>(form, "activeDocument");
