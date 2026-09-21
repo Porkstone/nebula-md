@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>nebula-md</id>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <title>nebula-md Markdown Editor</title>
     <authors>Charlie</authors>
     <owners>Charlie</owners>
@@ -21,7 +21,7 @@ Features include a multi-document workspace with tabs and a sorted sidebar; sour
     <iconUrl>https://cdn.jsdelivr.net/gh/Porkstone/nebula-md@33658099f875638e2a58ca2acff9ba9990b1a9c6/assets/nebula-md-preview.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <copyright>Copyright 2026 Charlie</copyright>
-    <releaseNotes>Version 1.1.0 adds a multi-document workspace with tabs and a sorted sidebar, multiple-file opening, single-instance handoff, per-document unsaved edits, and background disk-change tracking.</releaseNotes>
+    <releaseNotes>Version 1.2.0 checks Chocolatey for newer approved stable releases at startup and every 24 hours while running. A dismissible banner provides upgrade instructions and a package link. Checks tolerate offline connections and timeouts, cancel on shutdown, and announce each new version once per session. Also fixes duplicate completion of WebView2 resource deferrals.</releaseNotes>
     <tags>nebula-md markdown editor preview windows winforms</tags>
     <dependencies>
       <dependency id="webview2-runtime" version="[151.0.4129.59,)" />
