@@ -2,6 +2,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Web.WebView2.WinForms;
+using NebulaMd;
 
 // Exercise real WinForms event wiring and filesystem watchers without opening
 // a visible window or requiring a third-party test runner.
@@ -18,10 +19,21 @@ internal static class Program
         if (args.FirstOrDefault() == "--instance-host") return SingleInstanceChecks.RunHost(args);
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
+        if (args.FirstOrDefault() == "--theme-preview")
+        {
+            // An isolated visual-review window: never shares the installed app's
+            // single-instance identity or changes its saved appearance.
+            var reviewFolder = Path.Combine(Path.GetTempPath(), "nebula-theme-review-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(reviewFolder);
+            try { Application.Run(new MainForm(new ThemeSettings(Path.Combine(reviewFolder, "appearance.json")))); }
+            finally { Directory.Delete(reviewFolder, recursive: true); }
+            return 0;
+        }
         var folder = Path.Combine(Path.GetTempPath(), "nebula-md-smoke-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
         {
+            ThemeChecks.RunSettingsChecks(folder, Check);
             Task.Run(() => UpdateChecks.Run(Check)).GetAwaiter().GetResult();
             if (args.FirstOrDefault() == "--check-updates") return 0;
             if (args.FirstOrDefault() != "--check-instances") Run(folder);
@@ -47,7 +59,8 @@ internal static class Program
         File.WriteAllText(betaPath, "# Beta\n\n![Sample](sample.svg)\n");
         File.WriteAllText(Path.Combine(folder, "sample.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"/>");
 
-        using var form = (Form)Activator.CreateInstance(FormType, new object[] { Array.Empty<string>() })!;
+        var settings = new ThemeSettings(Path.Combine(folder, "appearance.json"));
+        using var form = new MainForm(settings);
         form.Opacity = 0;
         form.ShowInTaskbar = false;
         form.Show();
@@ -62,6 +75,13 @@ internal static class Program
         _ = editor.Handle;
         var workspaceParent = split.Parent;
         CheckPreview(preview, "Welcome to nebula-md");
+        Check(editor.Lines.Length > 10, "Welcome Markdown uses Windows line endings in the source editor");
+        Check(Field<AppTheme>(form, "currentTheme") == AppTheme.Nebula && editor.BackColor == ThemePalette.Nebula.Editor,
+            "First launch defaults to Nebula across application controls");
+        Check(EvaluatePreview<string>(preview, "document.documentElement.dataset.appearance") == "nebula" &&
+            EvaluatePreview<string>(preview, "getComputedStyle(document.documentElement).getPropertyValue('--page').trim()") == "#071419",
+            "Default preview uses the matching Nebula dark palette");
+        CaptureTheme(form, preview, "nebula");
         var previewNavigations = 0;
         preview.NavigationStarting += (_, _) => previewNavigations++;
         EvaluatePreview<bool>(preview, "window.nebulaPreviewMarker = true");
@@ -107,10 +127,35 @@ internal static class Program
         Check(previewNavigations == 0 && EvaluatePreview<bool>(preview, "window.nebulaPreviewMarker === true"),
             "Switching tabs updates the existing preview page without navigation");
         Call(form, "TogglePreviewTheme");
-        PumpUntil(() => EvaluatePreview<bool>(preview, "document.documentElement.className === 'night'"));
-        Call(form, "TogglePreviewTheme");
         PumpUntil(() => EvaluatePreview<bool>(preview, "document.documentElement.className === 'paper'"));
+        Call(form, "TogglePreviewTheme");
+        PumpUntil(() => EvaluatePreview<bool>(preview, "document.documentElement.className === 'night'"));
         Check(previewNavigations == 0, "Theme changes also preserve the existing preview page");
+
+        list.SelectedItem = zebra;
+        editor.Select(4, 5);
+        var preservedText = editor.Text;
+        var appearanceMenu = Field<ContextMenuStrip>(form, "appearanceMenu");
+        appearanceMenu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Legacy").PerformClick();
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.dataset.appearance") == "legacy");
+        Check(editor.BackColor == ThemePalette.Legacy.Editor && Field<AppTheme>(form, "currentTheme") == AppTheme.Legacy &&
+            EvaluatePreview<string>(preview, "getComputedStyle(document.documentElement).getPropertyValue('--page').trim()") == "#f6f1e6",
+            "Legacy selector restores olive controls and the paper preview");
+        Check(settings.Load() == AppTheme.Legacy, "Choosing Legacy persists the preference");
+        using (var nextLaunch = new MainForm(settings))
+            Check(Field<AppTheme>(nextLaunch, "currentTheme") == AppTheme.Legacy, "Next launch restores the selected theme");
+        CaptureTheme(form, preview, "legacy");
+        Call(form, "TogglePreviewTheme");
+        PumpUntil(() => EvaluatePreview<bool>(preview, "document.documentElement.className === 'night'"));
+        appearanceMenu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Nebula (default)").PerformClick();
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.dataset.appearance") == "nebula");
+        Check(editor.BackColor == ThemePalette.Nebula.Editor && settings.Load() == AppTheme.Nebula,
+            "Nebula can be reselected and persisted");
+        Check(editor.Text == preservedText && editor.SelectionStart == 4 && editor.SelectionLength == 5 &&
+            ReferenceEquals(Active(form), zebra) && Property<bool>(zebra, "IsDirty") && tabs.TabCount == 3,
+            "Theme switches preserve active tab, selection, unsaved text, and every document");
+        Check(previewNavigations == 0 && EvaluatePreview<bool>(preview, "window.nebulaPreviewMarker === true"),
+            "Application theme switches do not reload or replace the preview");
 
         Call(form, "OpenFile", zebraPath.ToUpperInvariant());
         Check(tabs.TabCount == 3 && ReferenceEquals(Active(form), zebra), "Opening same path with different case selects existing tab");
@@ -157,6 +202,12 @@ internal static class Program
         form.ClientSize = new Size(1120, 620);
         form.PerformLayout();
         Check(split.Width >= 605 && list.Width > 0, "Sidebar leaves room for both panes at minimum size");
+        CaptureTheme(form, preview, "nebula-minimum");
+        appearanceMenu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Legacy").PerformClick();
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.dataset.appearance") == "legacy");
+        CaptureTheme(form, preview, "legacy-minimum");
+        appearanceMenu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Nebula (default)").PerformClick();
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.dataset.appearance") == "nebula");
 
         var drop = new DataObject(DataFormats.FileDrop, new[] { zebraPath, alphaPath, betaPath, Path.Combine(folder, "missing.md") });
         var dropped = (IEnumerable)FormType.GetMethod("GetDroppedMarkdownFiles", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new object[] { drop })!;
@@ -183,11 +234,24 @@ internal static class Program
         form.DrawToBitmap(bitmap, form.ClientRectangle);
         var screenshot = Environment.GetEnvironmentVariable("NEBULA_SMOKE_SCREENSHOT");
         if (!string.IsNullOrWhiteSpace(screenshot)) bitmap.Save(screenshot);
-        updateBanner.Controls.OfType<Button>().Single(button => button.Text == "DISMISS").PerformClick();
+        updateBanner.Controls.OfType<Button>().Single(button => button.Text.Equals("DISMISS", StringComparison.OrdinalIgnoreCase)).PerformClick();
         Check(!updateBanner.Visible, "Update banner can be dismissed");
     }
 
     private static object Active(Form form) => Field<object>(form, "activeDocument");
+    private static void CaptureTheme(Form form, WebView2 preview, string theme)
+    {
+        var folder = Environment.GetEnvironmentVariable("NEBULA_THEME_SCREENSHOTS");
+        if (string.IsNullOrEmpty(folder)) return;
+        Directory.CreateDirectory(folder);
+        using var bitmap = new Bitmap(form.Width, form.Height);
+        form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
+        bitmap.Save(Path.Combine(folder, theme + "-window.png"));
+        using var output = File.Create(Path.Combine(folder, theme + "-preview.png"));
+        var capture = preview.CoreWebView2.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, output);
+        PumpUntil(() => capture.IsCompleted);
+        capture.GetAwaiter().GetResult();
+    }
     private static T Field<T>(object instance, string name) => (T)FormType.GetField(name, PrivateInstance)!.GetValue(instance)!;
     private static T Property<T>(object instance, string name) => (T)instance.GetType().GetProperty(name)!.GetValue(instance)!;
     private static object? Call(object instance, string name, params object[] args) => FormType.GetMethod(name, PrivateInstance)!.Invoke(instance, args);

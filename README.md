@@ -22,6 +22,8 @@ choco upgrade nebula-md -y
 
 ## Features
 
+- Choose **Nebula** (the default dark teal theme) or the original **Legacy** olive-and-paper theme from **Appearance** at the bottom of the document sidebar. Your choice is remembered for the next launch. Switching themes preserves open documents and unsaved edits; **Moon** still toggles the preview between dark and paper modes.
+
 - Check Chocolatey for updates at startup and every 24 hours while the app remains open. A dismissible banner links to the newest approved stable package and explains how to upgrade. Each newer version is announced once per session; offline or failed checks are silent and retry the next day. No updates are installed automatically.
 
 - Open one or more Markdown files with the **Open** button, `Ctrl+O`, drag-and-drop, or by passing file paths to the executable. Use Ctrl or Shift in the Open dialog to select multiple files from a folder.

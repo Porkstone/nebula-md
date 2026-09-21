@@ -9,14 +9,14 @@ using Microsoft.Web.WebView2.WinForms;
 
 namespace NebulaMd;
 
-internal sealed class MainForm : Form
+internal sealed partial class MainForm : Form
 {
-    private static readonly Color Ink = Color.FromArgb(28, 30, 27);
-    private static readonly Color DeepInk = Color.FromArgb(20, 21, 19);
-    private static readonly Color Lichen = Color.FromArgb(171, 183, 157);
-    private static readonly Color Ochre = Color.FromArgb(218, 166, 65);
-    private static readonly Color Paper = Color.FromArgb(246, 241, 230);
-    private static readonly Color Muted = Color.FromArgb(139, 143, 133);
+    private Color Ink => palette.Surface;
+    private Color DeepInk => palette.Canvas;
+    private Color Lichen => palette.Secondary;
+    private Color Ochre => palette.Accent;
+    private Color Paper => palette.Text;
+    private Color Muted => palette.Muted;
 
     private readonly MarkdownPipeline pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -34,7 +34,7 @@ internal sealed class MainForm : Form
     private readonly Label updateLabel = new();
     private CancellationTokenSource? updateCancellation;
     private readonly Dictionary<DisplayMode, Button> modeButtons = new();
-    private readonly TabControl documentTabs = new();
+    private readonly ThemeTabControl documentTabs = new();
     private readonly ListBox documentList = new();
     private readonly List<OpenDocument> documents = new();
     private readonly Dictionary<OpenDocument, TabPage> documentPages = new();
@@ -52,8 +52,14 @@ internal sealed class MainForm : Form
     private CancellationTokenSource? renderDelay;
     private DisplayMode displayMode = DisplayMode.Split;
 
-    public MainForm(params string[] paths)
+    public MainForm(params string[] paths) : this(new ThemeSettings(), paths) { }
+
+    internal MainForm(ThemeSettings settings, params string[] paths)
     {
+        themeSettings = settings;
+        currentTheme = settings.Load();
+        palette = ThemePalette.For(currentTheme);
+        darkPreview = currentTheme == AppTheme.Nebula;
         initialPaths = paths;
         Text = "nebula-md — Markdown editor";
         MinimumSize = new Size(1120, 620);
@@ -61,7 +67,7 @@ internal sealed class MainForm : Form
         ClientSize = new Size(1320, 820);
         BackColor = Ink;
         ForeColor = Color.White;
-        Font = new Font("Bahnschrift", 9.5f, FontStyle.Regular);
+        Font = ThemeFont(9.5f);
         AllowDrop = true;
         KeyPreview = true;
 
@@ -69,6 +75,7 @@ internal sealed class MainForm : Form
         if (applicationIcon is not null) Icon = applicationIcon;
 
         BuildInterface();
+        ApplyTheme(currentTheme, persist: false);
         WireEvents();
         AddDocument(activeDocument);
         ShowWelcomeDocument();
@@ -103,6 +110,7 @@ internal sealed class MainForm : Form
         updateBanner.Controls.Add(updateLabel);
         updateBanner.Controls.Add(details);
         updateBanner.Controls.Add(dismiss);
+        BindTheme(() => { updateBanner.BackColor = palette.Update; updateLabel.ForeColor = Paper; });
         return updateBanner;
     }
 
@@ -163,6 +171,17 @@ internal sealed class MainForm : Form
             Location = new Point(86, 42)
         };
         header.Controls.Add(subtitle);
+        BindTheme(() =>
+        {
+            header.BackColor = DeepInk;
+            mark.BackColor = IsModern ? palette.Selected : Ochre;
+            mark.ForeColor = IsModern ? Lichen : DeepInk;
+            mark.Font = IsModern ? ThemeFont(17f, FontStyle.Bold) : ThemeFont(18f, FontStyle.Bold, "Georgia");
+            brand.ForeColor = IsModern ? Paper : Color.FromArgb(240, 238, 228);
+            brand.Font = ThemeFont(15f, FontStyle.Bold);
+            subtitle.ForeColor = IsModern ? Muted : Lichen;
+            subtitle.Font = ThemeFont(7.5f);
+        });
 
         var actions = new FlowLayoutPanel
         {
@@ -174,7 +193,7 @@ internal sealed class MainForm : Form
             Padding = new Padding(0, 7, 0, 0)
         };
 
-        var themeButton = CreateToolbarButton("MOON", "Switch preview paper/midnight theme", (_, _) => TogglePreviewTheme(), 70);
+        var themeButton = CreateToolbarButton("MOON", "Toggle light/dark preview (application theme is in Appearance)", (_, _) => TogglePreviewTheme(), 70);
         var printButton = CreateToolbarButton("PRINT", "Print the rendered document (Ctrl+P)", async (_, _) => await PrintPreviewAsync(), 66);
         var reloadButton = CreateToolbarButton("RELOAD", "Reload from disk (F5)", (_, _) => ReloadFromDisk(), 76);
         var saveButton = CreateToolbarButton("SAVE", "Save Markdown (Ctrl+S)", (_, _) => SaveDocument(), 62, accent: true);
@@ -226,12 +245,26 @@ internal sealed class MainForm : Form
         editor.ForeColor = Color.FromArgb(226, 226, 214);
         editor.Font = new Font("Cascadia Mono", 10.5f, FontStyle.Regular);
         editor.Padding = new Padding(20);
+        var editorInset = new Panel { Dock = DockStyle.Fill };
+        sourcePanel.Controls.Remove(editor);
+        editorInset.Controls.Add(editor);
+        sourcePanel.Controls.Add(editorInset);
+        editorInset.BringToFront();
+        BindTheme(() =>
+        {
+            split.BackColor = palette.Border;
+            sourcePanel.BackColor = Ink;
+            editorInset.BackColor = editor.BackColor = palette.Editor;
+            editorInset.Padding = IsModern ? new Padding(22, 18, 16, 18) : Padding.Empty;
+            editor.ForeColor = IsModern ? Paper : Color.FromArgb(226, 226, 214);
+        });
 
         var previewPanel = new Panel { Dock = DockStyle.Fill, BackColor = Paper };
         previewPanel.Controls.Add(preview);
         previewPanel.Controls.Add(BuildPaneHeading("PREVIEW", "LIVE RENDER", Color.FromArgb(236, 231, 219), darkText: true));
         preview.Dock = DockStyle.Fill;
         preview.DefaultBackgroundColor = Paper;
+        BindTheme(() => { previewPanel.BackColor = palette.Preview; preview.DefaultBackgroundColor = PreviewBackground; });
 
         split.Panel1.Controls.Add(sourcePanel);
         split.Panel2.Controls.Add(previewPanel);
@@ -278,11 +311,31 @@ internal sealed class MainForm : Form
         {
             if (e.Index < 0) return;
             var selected = (e.State & DrawItemState.Selected) != 0;
-            using var background = new SolidBrush(selected ? Color.FromArgb(65, 70, 59) : DeepInk);
+            using var background = new SolidBrush(IsModern ? DeepInk : selected ? palette.Selected : DeepInk);
             e.Graphics.FillRectangle(background, e.Bounds);
             var bounds = Rectangle.Inflate(e.Bounds, -12, 0);
+            if (IsModern)
+            {
+                if (selected)
+                {
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    using var shape = ThemeButton.RoundedRectangle(Rectangle.Inflate(e.Bounds, -9, -4), 8);
+                    using var fill = new SolidBrush(palette.Selected);
+                    using var stroke = new Pen(palette.Border);
+                    e.Graphics.FillPath(fill, shape);
+                    e.Graphics.DrawPath(stroke, shape);
+                }
+                using var icon = new Pen(selected ? Lichen : Muted);
+                var x = e.Bounds.Left + 21;
+                var y = e.Bounds.Top + (e.Bounds.Height - 16) / 2;
+                e.Graphics.DrawRectangle(icon, x, y, 11, 15);
+                e.Graphics.DrawLine(icon, x + 3, y + 5, x + 8, y + 5);
+                e.Graphics.DrawLine(icon, x + 3, y + 9, x + 8, y + 9);
+                bounds.X += 33;
+                bounds.Width -= 33;
+            }
             TextRenderer.DrawText(e.Graphics, documentList.Items[e.Index].ToString(), documentList.Font,
-                bounds, selected ? Paper : Lichen,
+                bounds, selected ? IsModern ? Lichen : Paper : IsModern ? Muted : Lichen,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             e.DrawFocusRectangle();
         };
@@ -295,6 +348,15 @@ internal sealed class MainForm : Form
         var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = DeepInk };
         sidebar.Controls.Add(documentList);
         sidebar.Controls.Add(BuildPaneHeading("OPEN DOCUMENTS", "A–Z", DeepInk));
+        sidebar.Controls.Add(BuildThemeSelector());
+        BindTheme(() =>
+        {
+            sidebar.BackColor = documentList.BackColor = DeepInk;
+            documentList.ForeColor = Lichen;
+            documentList.Font = ThemeFont(10f);
+            documentList.ItemHeight = IsModern ? 46 : 34;
+            documentList.Invalidate();
+        });
         var workspace = new SplitContainer
         {
             Dock = DockStyle.Fill,
@@ -314,6 +376,14 @@ internal sealed class MainForm : Form
         documentPane.Controls.Add(documentTabs);
         workspace.Panel1.Controls.Add(sidebar);
         workspace.Panel2.Controls.Add(documentPane);
+        BindTheme(() =>
+        {
+            workspace.BackColor = palette.Border;
+            documentPane.BackColor = documentTabs.BackColor = Ink;
+            documentTabs.Font = ThemeFont(9f);
+            documentTabs.SetModern(IsModern);
+            documentTabs.Invalidate();
+        });
         return workspace;
     }
 
@@ -324,7 +394,7 @@ internal sealed class MainForm : Form
     {
         var page = documentTabs.TabPages[e.Index];
         var selected = e.Index == documentTabs.SelectedIndex;
-        using var background = new SolidBrush(selected ? Ink : DeepInk);
+        using var background = new SolidBrush(selected ? IsModern ? palette.Selected : Ink : DeepInk);
         e.Graphics.FillRectangle(background, e.Bounds);
         var textBounds = new Rectangle(e.Bounds.Left + 10, e.Bounds.Top, e.Bounds.Width - 38, e.Bounds.Height);
         TextRenderer.DrawText(e.Graphics, page.Text, Font, textBounds, selected ? Paper : Muted,
@@ -333,7 +403,7 @@ internal sealed class MainForm : Form
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         if (selected)
         {
-            using var accent = new SolidBrush(Ochre);
+            using var accent = new SolidBrush(IsModern ? Lichen : Ochre);
             e.Graphics.FillRectangle(accent, e.Bounds.Left, e.Bounds.Bottom - 3, e.Bounds.Width, 3);
         }
     }
@@ -453,6 +523,14 @@ internal sealed class MainForm : Form
         panel.Resize += (_, _) => meta.Left = panel.ClientSize.Width - meta.Width - 17;
         panel.Controls.Add(heading);
         panel.Controls.Add(meta);
+        BindTheme(() =>
+        {
+            panel.BackColor = darkText ? palette.PreviewHeading : title == "SOURCE" ? Ink : DeepInk;
+            heading.ForeColor = IsModern ? Paper : darkText ? Color.FromArgb(53, 55, 49) : Ochre;
+            heading.Font = ThemeFont(8.5f, FontStyle.Bold);
+            meta.ForeColor = IsModern ? Muted : darkText ? Color.FromArgb(126, 124, 114) : Muted;
+            meta.Font = ThemeFont(7.5f);
+        });
         return panel;
     }
 
@@ -486,6 +564,13 @@ internal sealed class MainForm : Form
         externalChangeBanner.Resize += (_, _) => reload.Left = externalChangeBanner.ClientSize.Width - reload.Width - 18;
         externalChangeBanner.Controls.Add(text);
         externalChangeBanner.Controls.Add(reload);
+        BindTheme(() =>
+        {
+            externalChangeBanner.BackColor = palette.Warning;
+            text.ForeColor = IsModern ? Paper : Color.FromArgb(255, 231, 181);
+            reload.ForeColor = Paper;
+            reload.FlatAppearance.BorderColor = Ochre;
+        });
         return externalChangeBanner;
     }
 
@@ -516,16 +601,26 @@ internal sealed class MainForm : Form
         metricsLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         metricsLabel.Location = new Point(status.Width - 240, 9);
         status.Resize += (_, _) => metricsLabel.Left = status.ClientSize.Width - metricsLabel.Width - 18;
+        metricsLabel.SizeChanged += (_, _) => metricsLabel.Left = status.ClientSize.Width - metricsLabel.Width - 18;
 
         status.Controls.Add(fileLabel);
         status.Controls.Add(statusLabel);
         status.Controls.Add(metricsLabel);
+        BindTheme(() =>
+        {
+            status.BackColor = DeepInk;
+            fileLabel.ForeColor = Lichen;
+            fileLabel.Font = ThemeFont(8f, FontStyle.Bold);
+            statusLabel.ForeColor = Muted;
+            statusLabel.Font = ThemeFont(8f);
+            metricsLabel.ForeColor = IsModern ? Muted : Color.FromArgb(157, 160, 149);
+        });
         return status;
     }
 
     private Button CreateToolbarButton(string text, string tooltip, EventHandler onClick, int width, bool accent = false)
     {
-        var button = new Button
+        var button = new ThemeButton
         {
             Text = text,
             Width = width,
@@ -536,23 +631,34 @@ internal sealed class MainForm : Form
             Font = new Font("Bahnschrift SemiBold", 8f, FontStyle.Bold),
             ForeColor = accent ? DeepInk : Color.FromArgb(221, 222, 211),
             BackColor = accent ? Ochre : Color.FromArgb(41, 43, 39),
-            TabStop = false
+            TabStop = true
         };
         button.FlatAppearance.BorderColor = accent ? Ochre : Color.FromArgb(71, 74, 67);
         button.FlatAppearance.MouseOverBackColor = accent ? Color.FromArgb(233, 184, 81) : Color.FromArgb(56, 59, 53);
         button.FlatAppearance.MouseDownBackColor = accent ? Color.FromArgb(198, 145, 42) : Color.FromArgb(31, 33, 29);
         button.Click += onClick;
         new ToolTip { InitialDelay = 350, ReshowDelay = 100 }.SetToolTip(button, tooltip);
+        BindTheme(() =>
+        {
+            button.Modern = IsModern;
+            button.Text = IsModern ? System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(text.ToLowerInvariant()) : text;
+            button.Font = ThemeFont(8f, FontStyle.Bold);
+            button.ForeColor = accent ? DeepInk : IsModern ? Paper : Color.FromArgb(221, 222, 211);
+            button.BackColor = accent ? Ochre : palette.Button;
+            button.FlatAppearance.BorderColor = accent ? Ochre : IsModern ? palette.Border : Color.FromArgb(71, 74, 67);
+            button.FlatAppearance.MouseOverBackColor = accent ? ControlPaint.Light(Ochre, .15f) : palette.Hover;
+            button.FlatAppearance.MouseDownBackColor = accent ? ControlPaint.Dark(Ochre, .1f) : palette.Pressed;
+            button.Invalidate();
+        });
         return button;
     }
 
-    private static Control CreateDivider() => new Panel
+    private Control CreateDivider()
     {
-        Width = 1,
-        Height = 30,
-        BackColor = Color.FromArgb(67, 69, 63),
-        Margin = new Padding(12, 3, 9, 0)
-    };
+        var divider = new Panel { Width = 1, Height = 30, Margin = new Padding(12, 3, 9, 0) };
+        BindTheme(() => divider.BackColor = palette.Border);
+        return divider;
+    }
 
     private void WireEvents()
     {
@@ -638,6 +744,7 @@ Console.WriteLine("Hello, Markdown.");
 | `F5` | Reload from disk |
 | `Ctrl+P` | Print preview |
 """;
+        editor.Text = NormalizeForWindowsEditor(editor.Text);
         editor.SelectionStart = 0;
         editor.SelectionLength = 0;
         suppressEditorChange = false;
@@ -707,6 +814,7 @@ Console.WriteLine("Hello, Markdown.");
                 title = activeDocument.Path is null ? "Untitled" : Path.GetFileNameWithoutExtension(activeDocument.Path),
                 content = Markdown.ToHtml(editor.Text, pipeline),
                 theme = darkPreview ? "night" : "paper",
+                appearance = IsModern ? "nebula" : "legacy",
                 baseUri = $"https://{host}/",
                 resetScroll = renderedDocument != activeDocument
             });
@@ -716,6 +824,7 @@ Console.WriteLine("Hello, Markdown.");
                     const update = {{update}};
                     document.title = update.title;
                     document.documentElement.className = update.theme;
+                    document.documentElement.dataset.appearance = update.appearance;
                     document.querySelector('base').href = update.baseUri;
                     document.querySelector('main').innerHTML = update.content;
                     if (update.resetScroll) window.scrollTo(0, 0);
@@ -736,7 +845,7 @@ Console.WriteLine("Hello, Markdown.");
         var themeClass = darkPreview ? "night" : "paper";
         return $$"""
 <!doctype html>
-<html lang="en" class="{{themeClass}}">
+<html lang="en" class="{{themeClass}}" data-appearance="{{(IsModern ? "nebula" : "legacy")}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -774,8 +883,18 @@ ul,ol { padding-left:1.5em; }
 li { padding-left:.18em; margin:.25em 0; }
 input[type=checkbox] { width:1.05em; height:1.05em; accent-color:var(--accent); vertical-align:-.12em; }
 .footnotes { margin-top:3em; padding-top:1em; border-top:1px solid var(--line); color:var(--soft); font-size:.88em; }
+html[data-appearance=nebula] { color-scheme:light; --page:#f4f8f9; --ink:#153039; --soft:#506c76; --line:#ccdde1; --accent:#087b7a; --code:#e7eff2; --quote:#e1efee; }
+html[data-appearance=nebula].night { color-scheme:dark; --page:#071419; --ink:#dfebed; --soft:#8ca6ae; --line:#1d3b44; --accent:#75d9d2; --code:#0b2027; --quote:#0e292f; }
+html[data-appearance=nebula] body { background:radial-gradient(ellipse at 0 0,rgba(35,122,126,.07),transparent 35rem),var(--page); font-family:"Segoe UI",sans-serif; font-size:16px; line-height:1.75; }
+html[data-appearance=nebula] main { padding:44px 42px 90px; }
+html[data-appearance=nebula] h1,html[data-appearance=nebula] h2,html[data-appearance=nebula] h3,html[data-appearance=nebula] th { font-family:"Segoe UI",sans-serif; }
+html[data-appearance=nebula] h1 { font-size:2.15em; font-weight:700; letter-spacing:-.035em; padding-bottom:.6em; }
+html[data-appearance=nebula] h2 { font-size:1.5em; }
+html[data-appearance=nebula] h3 { color:var(--ink); }
+html[data-appearance=nebula] pre { border-radius:10px; box-shadow:none; }
+html[data-appearance=nebula] blockquote { border-radius:0 8px 8px 0; border-left-width:3px; }
 @media(max-width:700px) { body{font-size:16px} main{padding:42px 28px 80px 44px} h1{font-size:2.1em} }
-@media print { body{background:white;color:#222} main{max-width:none;padding:0} a{color:inherit} }
+@media print { :root,html[data-appearance=nebula].night { --page:white; --ink:#222; --soft:#555; --line:#ccc; --accent:#333; --code:#f5f5f5; --quote:#f5f5f5; } body,html[data-appearance=nebula] body{background:white;color:#222} main,html[data-appearance=nebula] main{max-width:none;padding:0} a{color:inherit} }
 </style>
 </head>
 <body>
@@ -1007,16 +1126,16 @@ document.addEventListener('click', function (event) {
         foreach (var (mode, button) in modeButtons)
         {
             var selected = mode == displayMode;
-            button.BackColor = selected ? Color.FromArgb(80, 86, 73) : Color.FromArgb(41, 43, 39);
-            button.ForeColor = selected ? Color.White : Color.FromArgb(180, 182, 172);
-            button.FlatAppearance.BorderColor = selected ? Lichen : Color.FromArgb(71, 74, 67);
+            button.BackColor = selected ? IsModern ? palette.Selected : Color.FromArgb(80, 86, 73) : palette.Button;
+            button.ForeColor = selected ? IsModern ? Lichen : Color.White : IsModern ? Muted : Color.FromArgb(180, 182, 172);
+            button.FlatAppearance.BorderColor = selected ? Lichen : IsModern ? palette.Border : Color.FromArgb(71, 74, 67);
         }
     }
 
     private void TogglePreviewTheme()
     {
         darkPreview = !darkPreview;
-        preview.DefaultBackgroundColor = darkPreview ? Color.FromArgb(32, 34, 31) : Paper;
+        preview.DefaultBackgroundColor = PreviewBackground;
         RenderPreview();
         statusLabel.Text = darkPreview ? "MIDNIGHT PREVIEW" : "PAPER PREVIEW";
     }
@@ -1162,12 +1281,18 @@ document.addEventListener('click', function (event) {
         if (disposing)
         {
             updateCancellation?.Cancel();
+            appearanceMenu.Dispose();
             foreach (var document in documents) document.Dispose();
             renderDelay?.Cancel();
             renderDelay?.Dispose();
             renderDelay = null;
         }
         base.Dispose(disposing);
+        if (disposing)
+        {
+            foreach (var font in themeFonts.Values) font.Dispose();
+            themeFonts.Clear();
+        }
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
