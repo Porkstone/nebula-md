@@ -5,6 +5,8 @@ namespace NebulaMd;
 internal sealed class ThemeButton : Button
 {
     internal bool Modern { get; set; }
+    internal bool Selected { get; set; }
+    internal Color FocusColor { get; set; }
     private bool hovered;
     private bool pressed;
 
@@ -12,12 +14,18 @@ internal sealed class ThemeButton : Button
     protected override void OnMouseLeave(EventArgs e) { hovered = false; pressed = false; Invalidate(); base.OnMouseLeave(e); }
     protected override void OnMouseDown(MouseEventArgs e) { pressed = true; Invalidate(); base.OnMouseDown(e); }
     protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
+    protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+    protected override void OnLostFocus(EventArgs e) { pressed = false; Invalidate(); base.OnLostFocus(e); }
+    protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) { pressed = true; Invalidate(); } base.OnKeyDown(e); }
+    protected override void OnKeyUp(KeyEventArgs e) { pressed = false; Invalidate(); base.OnKeyUp(e); }
     protected override void OnPaint(PaintEventArgs e)
     {
         if (!Modern) { base.OnPaint(e); return; }
-        e.Graphics.Clear(Parent?.BackColor ?? BackColor);
+        Control? background = Parent;
+        while (background is not null && background.BackColor.A != 255) background = background.Parent;
+        e.Graphics.Clear(background?.BackColor ?? BackColor);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var bounds = new Rectangle(1, 1, Width - 3, Height - 3);
+        var bounds = new Rectangle(4, 4, Width - 9, Height - 9);
         using var path = RoundedRectangle(bounds, 9);
         using var fill = new SolidBrush(pressed ? FlatAppearance.MouseDownBackColor : hovered ? FlatAppearance.MouseOverBackColor : BackColor);
         using var border = new Pen(FlatAppearance.BorderColor);
@@ -25,7 +33,17 @@ internal sealed class ThemeButton : Button
         e.Graphics.DrawPath(border, path);
         TextRenderer.DrawText(e.Graphics, Text, Font, bounds, Enabled ? ForeColor : SystemColors.GrayText,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-        if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(bounds, -5, -5), ForeColor, BackColor);
+        if (Selected)
+        {
+            using var marker = new Pen(FocusColor, 2);
+            e.Graphics.DrawLine(marker, bounds.Left + 9, bounds.Bottom - 3, bounds.Right - 9, bounds.Bottom - 3);
+        }
+        if (Focused && ShowFocusCues)
+        {
+            using var ring = RoundedRectangle(Rectangle.Inflate(bounds, 3, 3), 11);
+            using var focus = new Pen(FocusColor, 2);
+            e.Graphics.DrawPath(focus, ring);
+        }
     }
 
     internal static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)

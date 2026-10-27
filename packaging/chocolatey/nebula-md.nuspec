@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>nebula-md</id>
-    <version>1.3.0</version>
+    <version>1.4.0</version>
     <title>nebula-md Markdown Editor</title>
     <authors>Charlie</authors>
     <owners>Charlie</owners>
@@ -10,7 +10,7 @@
     <description><![CDATA[
 nebula-md is a focused Windows Markdown editor and live previewer.
 
-Features include a multi-document workspace with tabs and a sorted sidebar; source, split, and preview layouts; tables, task lists, footnotes, and fenced code blocks; relative images and links; automatic refresh when files change; paper and midnight preview themes; printing; drag-and-drop; and Windows Open with integration.
+Features include a multi-document workspace with tabs and a sorted sidebar; source, split, and preview layouts; tables, task lists, footnotes, and fenced code blocks; relative images and links; automatic refresh when files change; full Light, Dark and System application modes plus Legacy appearance; paper and midnight preview themes; printing; drag-and-drop; and Windows Open with integration.
 ]]></description>
     <projectUrl>https://github.com/Porkstone/nebula-md</projectUrl>
     <projectSourceUrl>https://github.com/Porkstone/nebula-md</projectSourceUrl>
@@ -21,7 +21,7 @@ Features include a multi-document workspace with tabs and a sorted sidebar; sour
     <iconUrl>https://cdn.jsdelivr.net/gh/Porkstone/nebula-md@33658099f875638e2a58ca2acff9ba9990b1a9c6/assets/nebula-md-preview.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <copyright>Copyright 2026 Charlie</copyright>
-    <releaseNotes>Version 1.3.0 introduces the Nebula default theme with dark teal surfaces, cyan highlights, orange actions, rounded controls, and a matching preview. Choose Nebula or the original Legacy theme from Appearance in the document sidebar; the choice is remembered across launches. Switching preserves open documents and unsaved edits. Also improves welcome-document line breaks and status-count layout.</releaseNotes>
+    <releaseNotes>Version 1.4.0 applies the Nebula Applications Brand Guidelines with complete Light, Dark and System modes. System follows Windows application colour changes; explicit choices persist across launches. Menus, editor, preview, notifications and application messages share the selected palette. Adds visible teal keyboard focus, persistent selection markers, accessible control outlines, and contrast-checked orange action states. Legacy remains available separately. Appearance changes preserve open documents, unsaved edits, selection and the existing preview page.</releaseNotes>
     <tags>nebula-md markdown editor preview windows winforms</tags>
     <dependencies>
       <dependency id="webview2-runtime" version="[151.0.4129.59,)" />

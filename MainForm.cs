@@ -29,6 +29,7 @@ internal sealed partial class MainForm : Form
     private readonly Label fileLabel = new();
     private readonly Label statusLabel = new();
     private readonly Label metricsLabel = new();
+    private Button previewThemeButton = null!;
     private readonly Panel externalChangeBanner = new();
     private readonly Panel updateBanner = new();
     private readonly Label updateLabel = new();
@@ -58,8 +59,9 @@ internal sealed partial class MainForm : Form
     {
         themeSettings = settings;
         currentTheme = settings.Load();
-        palette = ThemePalette.For(currentTheme);
-        darkPreview = currentTheme == AppTheme.Nebula;
+        currentMode = settings.LoadMode();
+        palette = ThemePalette.For(currentTheme, IsLight);
+        darkPreview = IsModern && !IsLight;
         initialPaths = paths;
         Text = "nebula-md — Markdown editor";
         MinimumSize = new Size(1120, 620);
@@ -193,7 +195,8 @@ internal sealed partial class MainForm : Form
             Padding = new Padding(0, 7, 0, 0)
         };
 
-        var themeButton = CreateToolbarButton("MOON", "Toggle light/dark preview (application theme is in Appearance)", (_, _) => TogglePreviewTheme(), 70);
+        var themeButton = previewThemeButton = CreateToolbarButton("PAPER", "Toggle light/dark preview (application mode is in Appearance)", (_, _) => TogglePreviewTheme(), 70);
+        BindTheme(() => themeButton.Text = IsModern ? darkPreview ? "Paper" : "Dark" : "MOON");
         var printButton = CreateToolbarButton("PRINT", "Print the rendered document (Ctrl+P)", async (_, _) => await PrintPreviewAsync(), 66);
         var reloadButton = CreateToolbarButton("RELOAD", "Reload from disk (F5)", (_, _) => ReloadFromDisk(), 76);
         var saveButton = CreateToolbarButton("SAVE", "Save Markdown (Ctrl+S)", (_, _) => SaveDocument(), 62, accent: true);
@@ -250,12 +253,20 @@ internal sealed partial class MainForm : Form
         editorInset.Controls.Add(editor);
         sourcePanel.Controls.Add(editorInset);
         editorInset.BringToFront();
+        editorInset.Paint += (_, e) =>
+        {
+            if (!IsModern) return;
+            using var outline = new Pen(editor.Focused ? Lichen : palette.ControlOutline);
+            e.Graphics.DrawRectangle(outline, 0, 0, editorInset.Width - 1, editorInset.Height - 1);
+        };
+        editor.Enter += (_, _) => editorInset.Invalidate();
+        editor.Leave += (_, _) => editorInset.Invalidate();
         BindTheme(() =>
         {
             split.BackColor = palette.Border;
             sourcePanel.BackColor = Ink;
             editorInset.BackColor = editor.BackColor = palette.Editor;
-            editorInset.Padding = IsModern ? new Padding(22, 18, 16, 18) : Padding.Empty;
+            editorInset.Padding = IsModern ? new Padding(24, 16, 16, 16) : Padding.Empty;
             editor.ForeColor = IsModern ? Paper : Color.FromArgb(226, 226, 214);
         });
 
@@ -324,6 +335,8 @@ internal sealed partial class MainForm : Form
                     using var stroke = new Pen(palette.Border);
                     e.Graphics.FillPath(fill, shape);
                     e.Graphics.DrawPath(stroke, shape);
+                    using var marker = new SolidBrush(Lichen);
+                    e.Graphics.FillRectangle(marker, e.Bounds.Left + 12, e.Bounds.Top + 12, 3, e.Bounds.Height - 24);
                 }
                 using var icon = new Pen(selected ? Lichen : Muted);
                 var x = e.Bounds.Left + 21;
@@ -399,12 +412,13 @@ internal sealed partial class MainForm : Form
         var textBounds = new Rectangle(e.Bounds.Left + 10, e.Bounds.Top, e.Bounds.Width - 38, e.Bounds.Height);
         TextRenderer.DrawText(e.Graphics, page.Text, Font, textBounds, selected ? Paper : Muted,
             TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        TextRenderer.DrawText(e.Graphics, "×", Font, GetTabCloseBounds(e.Bounds), selected ? Ochre : Muted,
+        TextRenderer.DrawText(e.Graphics, "×", Font, GetTabCloseBounds(e.Bounds), IsModern ? Muted : selected ? Ochre : Muted,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         if (selected)
         {
             using var accent = new SolidBrush(IsModern ? Lichen : Ochre);
             e.Graphics.FillRectangle(accent, e.Bounds.Left, e.Bounds.Bottom - 3, e.Bounds.Width, 3);
+            if (documentTabs.Focused) ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(e.Bounds, -4, -4), Lichen, palette.Selected);
         }
     }
 
@@ -550,7 +564,7 @@ internal sealed partial class MainForm : Form
         };
         var reload = new Button
         {
-            Text = "RELOAD DISK VERSION",
+            Text = "Reload disk version",
             AutoSize = true,
             FlatStyle = FlatStyle.Flat,
             ForeColor = Color.White,
@@ -569,7 +583,10 @@ internal sealed partial class MainForm : Form
             externalChangeBanner.BackColor = palette.Warning;
             text.ForeColor = IsModern ? Paper : Color.FromArgb(255, 231, 181);
             reload.ForeColor = Paper;
-            reload.FlatAppearance.BorderColor = Ochre;
+            reload.BackColor = palette.Button;
+            reload.FlatAppearance.BorderColor = palette.ControlOutline;
+            reload.FlatAppearance.MouseOverBackColor = palette.Hover;
+            reload.FlatAppearance.MouseDownBackColor = palette.Pressed;
         });
         return externalChangeBanner;
     }
@@ -641,13 +658,14 @@ internal sealed partial class MainForm : Form
         BindTheme(() =>
         {
             button.Modern = IsModern;
-            button.Text = IsModern ? System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(text.ToLowerInvariant()) : text;
+            button.FocusColor = Lichen;
+            button.Text = IsModern ? char.ToUpperInvariant(text[0]) + text[1..].ToLowerInvariant() : text;
             button.Font = ThemeFont(8f, FontStyle.Bold);
-            button.ForeColor = accent ? DeepInk : IsModern ? Paper : Color.FromArgb(221, 222, 211);
+            button.ForeColor = accent ? IsModern ? palette.AccentText : DeepInk : IsModern ? Paper : Color.FromArgb(221, 222, 211);
             button.BackColor = accent ? Ochre : palette.Button;
-            button.FlatAppearance.BorderColor = accent ? Ochre : IsModern ? palette.Border : Color.FromArgb(71, 74, 67);
-            button.FlatAppearance.MouseOverBackColor = accent ? ControlPaint.Light(Ochre, .15f) : palette.Hover;
-            button.FlatAppearance.MouseDownBackColor = accent ? ControlPaint.Dark(Ochre, .1f) : palette.Pressed;
+            button.FlatAppearance.BorderColor = accent ? palette.PrimaryOutline : IsModern ? palette.ControlOutline : Color.FromArgb(71, 74, 67);
+            button.FlatAppearance.MouseOverBackColor = accent ? palette.AccentHover : palette.Hover;
+            button.FlatAppearance.MouseDownBackColor = accent ? palette.AccentPressed : palette.Pressed;
             button.Invalidate();
         });
         return button;
@@ -666,6 +684,7 @@ internal sealed partial class MainForm : Form
         Shown += async (_, _) => await WatchForUpdatesAsync();
         editor.TextChanged += EditorOnTextChanged;
         FormClosing += MainFormOnFormClosing;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += SystemAppearanceChanged;
         DragEnter += (_, e) => e.Effect = HasMarkdownFile(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
         DragDrop += (_, e) =>
         {
@@ -707,7 +726,7 @@ internal sealed partial class MainForm : Form
         catch (WebView2RuntimeNotFoundException)
         {
             statusLabel.Text = "WEBVIEW2 RUNTIME REQUIRED";
-            MessageBox.Show(
+            ShowMessage(
                 "nebula-md needs the Microsoft Edge WebView2 Runtime to display previews. Install the Evergreen WebView2 Runtime, then reopen the app.",
                 "Preview runtime missing",
                 MessageBoxButtons.OK,
@@ -883,7 +902,7 @@ ul,ol { padding-left:1.5em; }
 li { padding-left:.18em; margin:.25em 0; }
 input[type=checkbox] { width:1.05em; height:1.05em; accent-color:var(--accent); vertical-align:-.12em; }
 .footnotes { margin-top:3em; padding-top:1em; border-top:1px solid var(--line); color:var(--soft); font-size:.88em; }
-html[data-appearance=nebula] { color-scheme:light; --page:#f4f8f9; --ink:#153039; --soft:#506c76; --line:#ccdde1; --accent:#087b7a; --code:#e7eff2; --quote:#e1efee; }
+html[data-appearance=nebula] { color-scheme:light; --page:#f4f8f9; --ink:#153039; --soft:#506c76; --line:#ccdde1; --accent:#076d6c; --code:#e7eff2; --quote:#e1efee; }
 html[data-appearance=nebula].night { color-scheme:dark; --page:#071419; --ink:#dfebed; --soft:#8ca6ae; --line:#1d3b44; --accent:#75d9d2; --code:#0b2027; --quote:#0e292f; }
 html[data-appearance=nebula] body { background:radial-gradient(ellipse at 0 0,rgba(35,122,126,.07),transparent 35rem),var(--page); font-family:"Segoe UI",sans-serif; font-size:16px; line-height:1.75; }
 html[data-appearance=nebula] main { padding:44px 42px 90px; }
@@ -893,6 +912,8 @@ html[data-appearance=nebula] h2 { font-size:1.5em; }
 html[data-appearance=nebula] h3 { color:var(--ink); }
 html[data-appearance=nebula] pre { border-radius:10px; box-shadow:none; }
 html[data-appearance=nebula] blockquote { border-radius:0 8px 8px 0; border-left-width:3px; }
+html[data-appearance=nebula] a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:2px; }
+html[data-appearance=nebula] ::selection { background:var(--accent); color:var(--page); }
 @media(max-width:700px) { body{font-size:16px} main{padding:42px 28px 80px 44px} h1{font-size:2.1em} }
 @media print { :root,html[data-appearance=nebula].night { --page:white; --ink:#222; --soft:#555; --line:#ccc; --accent:#333; --code:#f5f5f5; --quote:#f5f5f5; } body,html[data-appearance=nebula] body{background:white;color:#222} main,html[data-appearance=nebula] main{max-width:none;padding:0} a{color:inherit} }
 </style>
@@ -962,7 +983,7 @@ document.addEventListener('click', function (event) {
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Could not open the file.\n\n{ex.Message}", "Open failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowMessage($"Could not open the file.\n\n{ex.Message}", "Open failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -985,7 +1006,7 @@ document.addEventListener('click', function (event) {
             if (documents.Any(other => other != document &&
                 string.Equals(other.Path, targetPath, StringComparison.OrdinalIgnoreCase)))
             {
-                MessageBox.Show(this, "That file is already open in another tab. Choose a different filename.",
+                ShowMessage("That file is already open in another tab. Choose a different filename.",
                     "File already open", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return false;
             }
@@ -1008,7 +1029,7 @@ document.addEventListener('click', function (event) {
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Could not save the file.\n\n{ex.Message}", "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowMessage($"Could not save the file.\n\n{ex.Message}", "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
         }
     }
@@ -1018,7 +1039,7 @@ document.addEventListener('click', function (event) {
         if (activeDocument.Path is null || !File.Exists(activeDocument.Path)) return;
         if (!force && activeDocument.IsDirty)
         {
-            var choice = MessageBox.Show(this, "Reloading will discard your unsaved edits. Continue?", "Reload from disk", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            var choice = ShowMessage("Reloading will discard your unsaved edits. Continue?", "Reload from disk", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (choice != DialogResult.Yes) return;
         }
         if (ReloadDocument(activeDocument)) statusLabel.Text = "RELOADED";
@@ -1129,12 +1150,20 @@ document.addEventListener('click', function (event) {
             button.BackColor = selected ? IsModern ? palette.Selected : Color.FromArgb(80, 86, 73) : palette.Button;
             button.ForeColor = selected ? IsModern ? Lichen : Color.White : IsModern ? Muted : Color.FromArgb(180, 182, 172);
             button.FlatAppearance.BorderColor = selected ? Lichen : IsModern ? palette.Border : Color.FromArgb(71, 74, 67);
+            if (button is ThemeButton themed)
+            {
+                themed.Selected = selected;
+                if (IsModern && !selected) button.FlatAppearance.BorderColor = palette.ControlOutline;
+                themed.AccessibleDescription = selected ? "Selected view" : "Switch view";
+                themed.Invalidate();
+            }
         }
     }
 
     private void TogglePreviewTheme()
     {
         darkPreview = !darkPreview;
+        previewThemeButton.Text = IsModern ? darkPreview ? "Paper" : "Dark" : "MOON";
         preview.DefaultBackgroundColor = PreviewBackground;
         RenderPreview();
         statusLabel.Text = darkPreview ? "MIDNIGHT PREVIEW" : "PAPER PREVIEW";
@@ -1257,7 +1286,7 @@ document.addEventListener('click', function (event) {
     {
         if (!document.IsDirty) return true;
         ActivateDocument(document);
-        var choice = MessageBox.Show(this, $"Save changes to {document.Name} before closing?", "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+        var choice = ShowMessage($"Save changes to {document.Name} before closing?", "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
         return choice switch
         {
             DialogResult.Yes => SaveDocument(),
@@ -1280,6 +1309,8 @@ document.addEventListener('click', function (event) {
     {
         if (disposing)
         {
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemAppearanceChanged;
+            modeMenu.Dispose();
             updateCancellation?.Cancel();
             appearanceMenu.Dispose();
             foreach (var document in documents) document.Dispose();

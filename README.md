@@ -22,7 +22,9 @@ choco upgrade nebula-md -y
 
 ## Features
 
-- Choose **Nebula** (the default dark teal theme) or the original **Legacy** olive-and-paper theme from **Appearance** at the bottom of the document sidebar. Your choice is remembered for the next launch. Switching themes preserves open documents and unsaved edits; **Moon** still toggles the preview between dark and paper modes.
+- Choose **Nebula** or the original **Legacy** olive-and-paper appearance from **Appearance** at the bottom of the document sidebar. Nebula supports **Dark** (the default), **Light**, and **System** under **Colour mode**. System follows the Windows application colour setting as it changes; explicit choices take precedence and are remembered across launches. The full workspace, menus, notifications, and application messages share the selected palette. Switching preserves open documents, unsaved edits, selection, and the live preview page. **Paper** / **Dark** independently toggles the Nebula preview; Legacy retains its **Moon** toggle.
+
+- Styling follows the Nebula Applications Brand Guidelines, with Segoe UI typography, teal selection and keyboard focus, persistent selection markers, and readable dark text on orange actions in both light and dark modes. Windows file pickers and printing use native system dialogs.
 
 - Check Chocolatey for updates at startup and every 24 hours while the app remains open. A dismissible banner links to the newest approved stable package and explains how to upgrade. Each newer version is announced once per session; offline or failed checks are silent and retry the next day. No updates are installed automatically.
 
@@ -74,6 +76,6 @@ On Windows with the WebView2 Runtime installed, run:
 dotnet run --project tests/NebulaMd.SmokeTests
 ```
 
-The smoke checks use hidden application windows and temporary files to verify tab/sidebar switching, previews without page reloads, relative images, independent edits and saves, disk-change handling, and closing tabs. Separate test processes also check simultaneous Explorer-style launches, file handoff, and preserving unsaved edits.
+The smoke checks also cover appearance migration and persistence, light/dark palettes, simulated Windows mode changes, contrast across button states, and themed confirmation dialogs. They use hidden application windows and temporary files to verify tab/sidebar switching, previews without page reloads, relative images, independent edits and saves, disk-change handling, and closing tabs. Separate test processes also check simultaneous Explorer-style launches, file handoff, and preserving unsaved edits.
 
 [^license]: nebula-md is open-source software distributed under the [MIT License](LICENSE).

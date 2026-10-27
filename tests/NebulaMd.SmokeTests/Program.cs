@@ -82,6 +82,11 @@ internal static class Program
             EvaluatePreview<string>(preview, "getComputedStyle(document.documentElement).getPropertyValue('--page').trim()") == "#071419",
             "Default preview uses the matching Nebula dark palette");
         CaptureTheme(form, preview, "nebula");
+        Call(form, "ApplyMode", AppearanceMode.Light);
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "paper");
+        CaptureTheme(form, preview, "light-welcome");
+        Call(form, "ApplyMode", AppearanceMode.Dark);
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "night");
         var previewNavigations = 0;
         preview.NavigationStarting += (_, _) => previewNavigations++;
         EvaluatePreview<bool>(preview, "window.nebulaPreviewMarker = true");
@@ -156,6 +161,12 @@ internal static class Program
             "Theme switches preserve active tab, selection, unsaved text, and every document");
         Check(previewNavigations == 0 && EvaluatePreview<bool>(preview, "window.nebulaPreviewMarker === true"),
             "Application theme switches do not reload or replace the preview");
+        RunModeChecks(form, preview, settings);
+        Check(editor.Text == preservedText && editor.SelectionStart == 4 && editor.SelectionLength == 5 &&
+            ReferenceEquals(Active(form), zebra) && Property<bool>(zebra, "IsDirty") && tabs.TabCount == 3,
+            "Light, Dark and System changes preserve every document and editor selection");
+        Check(previewNavigations == 0 && EvaluatePreview<bool>(preview, "window.nebulaPreviewMarker === true"),
+            "Colour mode and Windows preference changes preserve the preview page");
 
         Call(form, "OpenFile", zebraPath.ToUpperInvariant());
         Check(tabs.TabCount == 3 && ReferenceEquals(Active(form), zebra), "Opening same path with different case selects existing tab");
@@ -203,6 +214,10 @@ internal static class Program
         form.PerformLayout();
         Check(split.Width >= 605 && list.Width > 0, "Sidebar leaves room for both panes at minimum size");
         CaptureTheme(form, preview, "nebula-minimum");
+        Call(form, "ApplyMode", AppearanceMode.Light);
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "paper");
+        CaptureTheme(form, preview, "light-minimum");
+        Call(form, "ApplyMode", AppearanceMode.Dark);
         appearanceMenu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Legacy").PerformClick();
         PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.dataset.appearance") == "legacy");
         CaptureTheme(form, preview, "legacy-minimum");
@@ -239,6 +254,105 @@ internal static class Program
     }
 
     private static object Active(Form form) => Field<object>(form, "activeDocument");
+
+    private static void RunModeChecks(MainForm form, WebView2 preview, ThemeSettings settings)
+    {
+        var editor = Field<TextBox>(form, "editor");
+        var menu = Field<ContextMenuStrip>(form, "modeMenu");
+        menu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Light").PerformClick();
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "paper");
+        Check(editor.BackColor == ThemePalette.NebulaLight.Editor && form.BackColor == ThemePalette.NebulaLight.Surface &&
+            preview.DefaultBackgroundColor == ThemePalette.NebulaLight.Preview && settings.LoadMode() == AppearanceMode.Light,
+            "Light selector themes the workspace, loading surface and persisted mode");
+        Check(EvaluatePreview<string>(preview, "getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()") == "#076d6c",
+            "Light preview uses the guide's accessible teal link colour");
+        Check(menu.Items.OfType<ToolStripMenuItem>().Count(item => item.Checked) == 1 && menu.Items[1] is ToolStripMenuItem { Checked: true },
+            "The mode menu uses a persistent check marker for the selected choice");
+        using (var nextLaunch = new MainForm(settings))
+            Check(nextLaunch.BackColor == ThemePalette.NebulaLight.Surface, "The next launch restores the complete light theme");
+        CaptureTheme(form, preview, "light");
+        Call(form, "TogglePreviewTheme");
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "night");
+        Check(editor.BackColor == ThemePalette.NebulaLight.Editor && preview.DefaultBackgroundColor == ThemePalette.Nebula.Preview,
+            "Independent dark preview keeps light chrome and the correct loading background");
+        Call(form, "TogglePreviewTheme");
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "paper");
+        var modes = Field<IDictionary>(form, "modeButtons");
+        Check(modes.Values.Cast<ThemeButton>().Count(button => button.Selected) == 1,
+            "The active layout has a visible underline as well as selected colour");
+        var viewButton = modes.Values.Cast<ThemeButton>().Single(button => button.Selected);
+        using (var painted = new Bitmap(viewButton.Width, viewButton.Height))
+        {
+            viewButton.DrawToBitmap(painted, viewButton.ClientRectangle);
+            Check(painted.GetPixel(0, 0).ToArgb() == ThemePalette.NebulaLight.Canvas.ToArgb(),
+                "Rounded toolbar controls paint their light parent without black rectangles");
+        }
+        // Show keyboard cues on this isolated hidden test window, then review
+        // the custom focus treatment without sending input to the user's apps.
+        _ = SendMessage(form.Handle, 0x0127, (IntPtr)0x00010002, IntPtr.Zero);
+        viewButton.Focus();
+        Check(viewButton.Focused, "The selected layout remains keyboard focusable");
+        CaptureTheme(form, preview, "light-focus");
+        Call(form, "ShowAvailableUpdate", new Version(9, 0, 0));
+        Check(Field<Panel>(form, "updateBanner").BackColor == ThemePalette.NebulaLight.Update,
+            "Update notifications use the light semantic palette");
+        CaptureTheme(form, preview, "light-update");
+        Field<Panel>(form, "updateBanner").Visible = false;
+        CheckDialogs(form, ThemePalette.NebulaLight, "light");
+        var appearance = Field<ContextMenuStrip>(form, "appearanceMenu");
+        appearance.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Legacy").PerformClick();
+        Check(settings.LoadMode() == AppearanceMode.Light, "Legacy keeps the separate Nebula mode preference");
+        appearance.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Nebula (default)").PerformClick();
+        Check(editor.BackColor == ThemePalette.NebulaLight.Editor, "Returning from Legacy restores the selected Nebula light mode");
+        menu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "System").PerformClick();
+        Call(form, "ApplySystemAppearance", false);
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "night");
+        Check(editor.BackColor == ThemePalette.Nebula.Editor, "System mode follows Windows switching to dark");
+        Call(form, "ApplySystemAppearance", true);
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "paper");
+        Check(editor.BackColor == ThemePalette.NebulaLight.Editor && settings.LoadMode() == AppearanceMode.System,
+            "System mode follows Windows switching to light without replacing the preference");
+        menu.Items.OfType<ToolStripMenuItem>().Single(item => item.Text == "Dark").PerformClick();
+        Call(form, "ApplySystemAppearance", true);
+        Call(form, "ApplySystemAppearance", false);
+        PumpUntil(() => EvaluatePreview<string>(preview, "document.documentElement.className") == "night");
+        Check(editor.BackColor == ThemePalette.Nebula.Editor && settings.LoadMode() == AppearanceMode.Dark,
+            "An explicit Dark choice takes precedence over Windows changes");
+        CheckDialogs(form, ThemePalette.Nebula, "dark");
+    }
+
+    private static void CheckDialogs(Form owner, ThemePalette palette, string mode)
+    {
+        using var dialog = new ThemeDialog(palette, mode == "dark", owner.Font,
+            "Save changes to Application guidelines.md before closing?", "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+        dialog.Opacity = 0;
+        using var timer = new System.Windows.Forms.Timer { Interval = 100 };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            var folder = Environment.GetEnvironmentVariable("NEBULA_THEME_SCREENSHOTS");
+            if (!string.IsNullOrEmpty(folder))
+            {
+                using var bitmap = new Bitmap(dialog.Width, dialog.Height);
+                dialog.DrawToBitmap(bitmap, new Rectangle(Point.Empty, dialog.Size));
+                bitmap.Save(Path.Combine(folder, mode + "-dialog.png"));
+            }
+            ((Button)dialog.CancelButton!).PerformClick();
+        };
+        timer.Start();
+        Check(dialog.ShowDialog(owner) == DialogResult.Cancel && dialog.BackColor == palette.Surface,
+            $"{mode} save dialog uses the matching palette and Cancel preserves edits");
+        using var reload = new ThemeDialog(palette, mode == "dark", owner.Font,
+            "Reloading will discard your unsaved edits. Continue?", "Reload from disk", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        Check(ReferenceEquals(reload.AcceptButton, reload.CancelButton) && reload.CancelButton!.DialogResult == DialogResult.No,
+            "Reload confirmation defaults to cancelling a destructive action");
+        reload.ApplyAppearance(mode == "dark" ? ThemePalette.NebulaLight : ThemePalette.Nebula, mode != "dark");
+        Check(reload.BackColor != palette.Surface, "An open application dialog can follow a system appearance change");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
     private static void CaptureTheme(Form form, WebView2 preview, string theme)
     {
         var folder = Environment.GetEnvironmentVariable("NEBULA_THEME_SCREENSHOTS");
