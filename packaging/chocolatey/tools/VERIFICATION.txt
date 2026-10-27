@@ -7,7 +7,7 @@ https://github.com/Porkstone/nebula-md
 
 Build instructions:
 
-1. Check out source commit 2c86970acb6c7d27eb76160940c82324be5d083f for version 1.3.0.
+1. Check out source commit f39de1c8d5d69ef10d17742949f141a4c5d9f0cd for version 1.4.0.
 2. From the repository root, run:
    dotnet publish -c Release -r win-x64 --self-contained true -o dist
 3. Calculate the checksum with:
@@ -16,5 +16,5 @@ Build instructions:
 Embedded binary checksum:
 
   file: nebula-md.exe
-  size: 163669204 bytes
-  sha256: 15073F6C76BC7BC61EB4ABEAB0096C8577A2C713E499E55A9270EAA0CABF80F5
+  size: 163677396 bytes
+  sha256: 402D9E8C8B0D521B857269541338E0B8D47BA7781A315ECF87988665AD66FB0A
